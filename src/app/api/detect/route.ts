@@ -1,0 +1,127 @@
+import { NextResponse } from 'next/server';
+import {
+  getStores,
+  getProducts,
+  getDailySales,
+  getInventorySnapshots,
+  getPromotions,
+  saveDetectionRun,
+} from '@/lib/storage';
+import { runBaselineDetection } from '@/lib/detector';
+import { Alert, DetectionConfig, DetectionRun } from '@/types';
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json().catch(() => ({}));
+    const targetStoreId = body.storeId || 'ALL';
+    const configOverrides: Partial<DetectionConfig> = body.config || {};
+
+    const [stores, products, sales, inventory, promotions] = await Promise.all([
+      getStores(),
+      getProducts(),
+      getDailySales(targetStoreId),
+      getInventorySnapshots(targetStoreId),
+      getPromotions(),
+    ]);
+
+    const filteredStores = targetStoreId === 'ALL' ? stores : stores.filter((s) => s.id === targetStoreId);
+
+    let engineType: DetectionRun['engine_type'] = 'BASELINE_POISSON';
+    let alerts: Alert[] = [];
+
+    // Check if an external Python ML microservice is configured
+    const pythonServiceUrl = process.env.DETECTION_SERVICE_URL;
+    let usedPython = false;
+
+    if (pythonServiceUrl && pythonServiceUrl.startsWith('http')) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+        const pyResponse = await fetch(`${pythonServiceUrl.replace(/\/$/, '')}/detect`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            stores: filteredStores,
+            products,
+            sales,
+            inventory,
+            promotions,
+            config: configOverrides,
+          }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (pyResponse.ok) {
+          const pyData = await pyResponse.json();
+          if (Array.isArray(pyData.alerts)) {
+            alerts = pyData.alerts;
+            engineType = 'PYTHON_FASTAPI';
+            usedPython = true;
+          }
+        }
+      } catch {
+        // Honest fallback to deterministic baseline
+        usedPython = false;
+      }
+    }
+
+    if (!usedPython) {
+      alerts = runBaselineDetection({
+        stores: filteredStores,
+        products,
+        sales,
+        inventory,
+        promotions,
+        config: configOverrides,
+      });
+      engineType = 'BASELINE_POISSON';
+    }
+
+    const runId = `RUN-${Date.now().toString(36).toUpperCase()}`;
+    const now = new Date().toISOString();
+
+    const finalizedAlerts = alerts.map((alt) => ({
+      ...alt,
+      run_id: runId,
+    }));
+
+    const criticalCount = finalizedAlerts.filter((a) => a.risk_category === 'CRITICAL').length;
+
+    const runRecord: DetectionRun = {
+      id: runId,
+      run_date: now,
+      store_id: targetStoreId,
+      total_skus_analyzed: filteredStores.length * products.length,
+      flagged_count: finalizedAlerts.length,
+      critical_count: criticalCount,
+      engine_type: engineType,
+      parameters: {
+        minConsecutiveZeroDays: configOverrides.minConsecutiveZeroDays ?? 2,
+        fastMoverThreshold: configOverrides.fastMoverThreshold ?? 2.5,
+        slowMoverThreshold: configOverrides.slowMoverThreshold ?? 0.6,
+        significanceThreshold: configOverrides.significanceThreshold ?? 0.05,
+        maxRankPerStore: configOverrides.maxRankPerStore ?? 20,
+      },
+      is_demo: false,
+      created_at: now,
+    };
+
+    await saveDetectionRun(runRecord, finalizedAlerts);
+
+    return NextResponse.json({
+      success: true,
+      run: runRecord,
+      alerts: finalizedAlerts,
+      engine_type: engineType,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Detection failed';
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    );
+  }
+}
