@@ -67,44 +67,44 @@ Format your response as valid JSON matching this schema:
 
     // 1. Try Google Gemini if configured
     if (geminiKey) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const geminiModels = ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
+      for (const model of geminiModels) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 7000);
 
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`;
-        const response = await fetch(geminiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: promptContext }] }],
-            generationConfig: {
-              temperature: 0.2,
-              responseMimeType: 'application/json',
-            },
-          }),
-          signal: controller.signal,
-        });
+          const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
+          const response = await fetch(geminiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: promptContext }] }],
+              generationConfig: {
+                temperature: 0.2,
+                responseMimeType: 'application/json',
+              },
+            }),
+            signal: controller.signal,
+          });
 
-        clearTimeout(timeoutId);
+          clearTimeout(timeoutId);
 
-        if (response.ok) {
-          const data = await response.json();
-          const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (rawText) {
-            const parsed = JSON.parse(rawText);
-            return NextResponse.json({
-              success: true,
-              aiAvailable: true,
-              provider: 'GEMINI',
-              diagnostic: parsed,
-            });
+          if (response.ok) {
+            const data = await response.json();
+            const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (rawText) {
+              const parsed = JSON.parse(rawText);
+              return NextResponse.json({
+                success: true,
+                aiAvailable: true,
+                provider: `GEMINI (${model})`,
+                diagnostic: parsed,
+              });
+            }
           }
-        } else {
-          const errData = await response.json().catch(() => ({}));
-          console.error('Gemini API call returned error:', errData);
+        } catch (err: unknown) {
+          console.warn(`Gemini model ${model} failed, trying next:`, err instanceof Error ? err.message : err);
         }
-      } catch (err: unknown) {
-        console.error('Gemini API request failed:', err instanceof Error ? err.message : err);
       }
     }
 
