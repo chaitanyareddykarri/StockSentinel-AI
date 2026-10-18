@@ -18,6 +18,10 @@ import {
   Building2,
   Sparkles,
   Percent,
+  Bot,
+  RefreshCw,
+  Lightbulb,
+  ListChecks,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -25,6 +29,12 @@ interface AlertDetailModalProps {
   alert: Alert | null;
   onClose: () => void;
   onAlertUpdated: (updated: Alert) => void;
+}
+
+interface AIDiagnosticData {
+  hypothesis: string;
+  actionSteps: string[];
+  revenueImpact: string;
 }
 
 export function AlertDetailModal({ alert, onClose, onAlertUpdated }: AlertDetailModalProps) {
@@ -49,7 +59,7 @@ function AlertDetailModalInner({
   onClose: () => void;
   onAlertUpdated: (updated: Alert) => void;
 }) {
-  const [activeTab, setActiveTab] = useState<'verify' | 'audit'>('verify');
+  const [activeTab, setActiveTab] = useState<'verify' | 'ai' | 'audit'>('verify');
   const [shelfCount, setShelfCount] = useState<number>(alert.shelf_count ?? 0);
   const [selectedOutcome, setSelectedOutcome] = useState<VerificationOutcome>(
     alert.verification_outcome ?? 'PHANTOM_CONFIRMED'
@@ -59,6 +69,12 @@ function AlertDetailModalInner({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [loadingAudit, setLoadingAudit] = useState<boolean>(true);
+
+  // AI Diagnostic State
+  const [aiLoading, setAiLoading] = useState<boolean>(false);
+  const [aiData, setAiData] = useState<AIDiagnosticData | null>(null);
+  const [aiProvider, setAiProvider] = useState<string>('NONE');
+  const [aiMessage, setAiMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -80,6 +96,43 @@ function AlertDetailModalInner({
       isMounted = false;
     };
   }, [alert.id]);
+
+  const handleRunAiDiagnostic = async () => {
+    setAiLoading(true);
+    setAiMessage(null);
+    try {
+      const res = await fetch('/api/ai/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sku: alert.sku,
+          productName: alert.product_name,
+          category: alert.category,
+          unitPrice: alert.unit_price,
+          storeName: alert.store_name,
+          recordedStock: alert.recorded_stock,
+          consecutiveZeroDays: alert.consecutive_zero_days,
+          expectedDailySales: alert.expected_daily_sales,
+          poissonAnomalyP: alert.poisson_anomaly_p,
+          isOnPromotion: alert.is_on_promotion,
+          primaryReason: alert.primary_reason,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.diagnostic) {
+        setAiData(data.diagnostic);
+        setAiProvider(data.provider || 'AI');
+      } else {
+        setAiMessage(data.message || 'AI diagnostic is unavailable.');
+        setAiProvider(data.provider || 'NONE');
+      }
+    } catch {
+      setAiMessage('Failed to connect to AI reasoning endpoint.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   const handleVerifySubmit = async (newStatus: AlertStatus) => {
     setIsSubmitting(true);
@@ -163,7 +216,7 @@ function AlertDetailModalInner({
 
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -216,7 +269,7 @@ function AlertDetailModalInner({
           <div className="bg-slate-900/70 p-4 rounded-xl border border-emerald-500/20 relative">
             <div className="flex items-center space-x-2 text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-2">
               <Sparkles className="w-4 h-4" />
-              <span>Explainable AI Detection Narrative</span>
+              <span>Explainable Baseline Detection Signal</span>
             </div>
             <p className="text-sm text-slate-200 leading-relaxed">{alert.primary_reason}</p>
             {alert.is_on_promotion && (
@@ -226,7 +279,7 @@ function AlertDetailModalInner({
             )}
           </div>
 
-          {/* Tabs: Physical Verification vs. Audit Trail */}
+          {/* Tabs: Physical Verification vs. AI Copilot vs. Audit Trail */}
           <div>
             <div className="flex items-center space-x-4 border-b border-white/10 mb-4">
               <button
@@ -237,7 +290,18 @@ function AlertDetailModalInner({
                     : 'border-transparent text-slate-400 hover:text-slate-200'
                 }`}
               >
-                Physical Shelf Walk & Verification
+                Physical Shelf Walk
+              </button>
+              <button
+                onClick={() => setActiveTab('ai')}
+                className={`pb-2 text-sm font-semibold border-b-2 transition-colors flex items-center space-x-1.5 cursor-pointer ${
+                  activeTab === 'ai'
+                    ? 'border-emerald-500 text-emerald-400'
+                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Bot className="w-4 h-4" />
+                <span>AI Root-Cause Copilot</span>
               </button>
               <button
                 onClick={() => setActiveTab('audit')}
@@ -254,7 +318,6 @@ function AlertDetailModalInner({
 
             {activeTab === 'verify' ? (
               <div className="space-y-4 bg-slate-900/50 p-4 rounded-xl border border-white/5">
-                {/* Physical Count */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-slate-300 mb-1">
@@ -283,7 +346,6 @@ function AlertDetailModalInner({
                   </div>
                 </div>
 
-                {/* Verification Outcome Selector */}
                 <div>
                   <label className="block text-xs font-medium text-slate-300 mb-1.5">
                     Physical Investigation Outcome
@@ -338,7 +400,6 @@ function AlertDetailModalInner({
                   </div>
                 </div>
 
-                {/* Notes Input */}
                 <div>
                   <label className="block text-xs font-medium text-slate-300 mb-1">
                     Investigation Notes & Findings
@@ -352,7 +413,6 @@ function AlertDetailModalInner({
                   />
                 </div>
 
-                {/* Action Buttons */}
                 <div className="pt-2 flex flex-wrap items-center justify-end gap-2">
                   <button
                     type="button"
@@ -382,6 +442,84 @@ function AlertDetailModalInner({
                     <span>Confirm Physical Verification</span>
                   </button>
                 </div>
+              </div>
+            ) : activeTab === 'ai' ? (
+              /* AI Copilot Tab */
+              <div className="space-y-4 bg-slate-900/50 p-4 rounded-xl border border-white/5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Bot className="w-5 h-5 text-indigo-400" />
+                    <h3 className="text-sm font-bold text-white">AI Root-Cause Diagnostic Copilot</h3>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleRunAiDiagnostic}
+                    disabled={aiLoading}
+                    className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white shadow-md shadow-indigo-500/20 disabled:opacity-50 transition-all cursor-pointer"
+                  >
+                    {aiLoading ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Analyzing with AI...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Run AI Root-Cause Diagnostic</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {aiData ? (
+                  <div className="space-y-3 pt-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400 font-mono">Provider: {aiProvider}</span>
+                      <span className="text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                        AI Reasoning Complete
+                      </span>
+                    </div>
+
+                    <div className="bg-slate-950 p-3 rounded-lg border border-indigo-500/20 space-y-1">
+                      <p className="text-xs font-semibold text-indigo-400 flex items-center space-x-1.5">
+                        <Lightbulb className="w-3.5 h-3.5" />
+                        <span>Root-Cause Operational Hypothesis:</span>
+                      </p>
+                      <p className="text-xs text-slate-200 leading-relaxed">{aiData.hypothesis}</p>
+                    </div>
+
+                    <div className="bg-slate-950 p-3 rounded-lg border border-white/5 space-y-1.5">
+                      <p className="text-xs font-semibold text-emerald-400 flex items-center space-x-1.5">
+                        <ListChecks className="w-3.5 h-3.5" />
+                        <span>Recommended Shelf Inspection Steps:</span>
+                      </p>
+                      <ul className="list-disc list-inside space-y-1 text-xs text-slate-300">
+                        {aiData.actionSteps.map((step, idx) => (
+                          <li key={idx}>{step}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="bg-slate-950 p-3 rounded-lg border border-white/5 text-xs text-slate-300">
+                      <span className="text-slate-500 font-semibold">Revenue & Customer Impact:</span>{' '}
+                      {aiData.revenueImpact}
+                    </div>
+                  </div>
+                ) : aiMessage ? (
+                  <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-300 space-y-2">
+                    <p className="font-semibold">{aiMessage}</p>
+                    <p className="text-[11px] text-slate-400">
+                      Configure <code className="text-indigo-400 font-mono">GEMINI_API_KEY</code> or{' '}
+                      <code className="text-indigo-400 font-mono">OPENAI_API_KEY</code> in your environment variables to enable generative AI root-cause diagnostics.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="text-center py-6 space-y-2 text-xs text-slate-400">
+                    <p>Click &quot;Run AI Root-Cause Diagnostic&quot; to synthesize sales velocity and stock anomalies into operational remediation hypotheses.</p>
+                    <p className="text-[11px] text-slate-500">Supports Google Gemini or OpenAI server-side keys.</p>
+                  </div>
+                )}
               </div>
             ) : (
               /* Audit Trail List */

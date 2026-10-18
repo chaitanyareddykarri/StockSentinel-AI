@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Navbar } from '@/components/Navbar';
+import { ProtectedRoute } from '@/components/ProtectedRoute';
 import {
   Settings,
   Sliders,
@@ -49,8 +50,9 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0e17] text-slate-100 flex flex-col">
-      <Navbar />
+    <ProtectedRoute>
+      <div className="min-h-screen bg-[#0a0e17] text-slate-100 flex flex-col">
+        <Navbar />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* Header */}
@@ -239,5 +241,6 @@ export default function SettingsPage() {
         </div>
       </main>
     </div>
+  </ProtectedRoute>
   );
 }

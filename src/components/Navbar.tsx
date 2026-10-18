@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { useAuth } from '@/context/AuthContext';
 import {
   ShieldAlert,
   LayoutDashboard,
@@ -16,6 +17,8 @@ import {
   X,
   Play,
   CheckCircle,
+  LogOut,
+  User as UserIcon,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -25,6 +28,8 @@ interface NavbarProps {
 
 export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, signOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dbMode, setDbMode] = useState<'SUPABASE_POSTGRESQL' | 'DEMO_IN_MEMORY'>('DEMO_IN_MEMORY');
   const [resetting, setResetting] = useState(false);
@@ -63,8 +68,13 @@ export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
     }
   };
 
+  const handleSignOut = async () => {
+    await signOut();
+    router.push('/login');
+  };
+
   const navLinks = [
-    { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/alerts', label: 'Alerts & Verifications', icon: BellRing },
     { href: '/import', label: 'CSV Ingestion', icon: FileSpreadsheet },
     { href: '/analytics', label: 'Benchmark & Eval', icon: LineChart },
@@ -77,7 +87,7 @@ export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
         <div className="flex items-center justify-between h-16">
           {/* Brand Logo */}
           <div className="flex items-center space-x-3">
-            <Link href="/" className="flex items-center space-x-2 group">
+            <Link href={user ? '/dashboard' : '/'} className="flex items-center space-x-2 group">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 group-hover:scale-105 transition-transform">
                 <ShieldAlert className="w-6 h-6 text-white" />
               </div>
@@ -166,6 +176,48 @@ export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
             >
               <RefreshCw className={`w-4 h-4 ${resetting ? 'animate-spin' : ''}`} />
             </button>
+
+            {/* User Profile / Auth State */}
+            {user ? (
+              <div className="flex items-center space-x-2.5 pl-2.5 border-l border-white/10">
+                <div className="flex items-center space-x-2">
+                  <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                    <UserIcon className="w-4 h-4" />
+                  </div>
+                  <div className="hidden lg:flex flex-col text-left">
+                    <span className="text-xs font-medium text-slate-200 truncate max-w-[110px]">
+                      {user.name || user.email.split('@')[0]}
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      {user.isGuest ? 'Guest' : (user.storeName || user.role || 'Member')}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleSignOut}
+                  title="Sign out of StockSentinel AI"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center space-x-2 pl-2 border-l border-white/10">
+                <Link
+                  href="/login"
+                  className="text-xs font-medium text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg hover:bg-slate-800 transition-colors"
+                >
+                  Sign In
+                </Link>
+                <Link
+                  href="/signup"
+                  className="text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg transition-colors shadow-sm shadow-emerald-600/30"
+                >
+                  Sign Up
+                </Link>
+              </div>
+            )}
           </div>
 
           {/* Mobile menu button */}
@@ -203,22 +255,60 @@ export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
             );
           })}
 
-          <div className="pt-2 border-t border-white/10 flex items-center justify-between">
-            <span className="text-xs text-slate-400">
-              Storage: {dbMode === 'SUPABASE_POSTGRESQL' ? 'Supabase' : 'Demo State'}
-            </span>
-            {onRunDetection && (
-              <button
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  onRunDetection();
-                }}
-                disabled={isRunningDetection}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white"
-              >
-                {isRunningDetection ? 'Analyzing...' : 'Run Detection'}
-              </button>
-            )}
+          <div className="pt-3 border-t border-white/10 space-y-2">
+            <div className="flex items-center justify-between text-xs text-slate-400">
+              <span>Storage: {dbMode === 'SUPABASE_POSTGRESQL' ? 'Supabase' : 'Demo State'}</span>
+              {user && (
+                <span className="text-emerald-400 font-medium">
+                  {user.name || user.email}
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center space-x-2">
+              {onRunDetection && (
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onRunDetection();
+                  }}
+                  disabled={isRunningDetection}
+                  className="flex-1 py-2 rounded-lg text-xs font-semibold bg-emerald-600 text-white"
+                >
+                  {isRunningDetection ? 'Analyzing...' : 'Run Detection'}
+                </button>
+              )}
+
+              {user ? (
+                <button
+                  onClick={async () => {
+                    setMobileMenuOpen(false);
+                    await handleSignOut();
+                  }}
+                  className="flex items-center justify-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-slate-800 text-rose-400 hover:bg-slate-700"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Sign Out</span>
+                </button>
+              ) : (
+                <div className="flex items-center space-x-2 w-full">
+                  <Link
+                    href="/login"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex-1 text-center py-2 rounded-lg text-xs font-medium bg-slate-800 text-slate-200"
+                  >
+                    Sign In
+                  </Link>
+                  <Link
+                    href="/signup"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex-1 text-center py-2 rounded-lg text-xs font-semibold bg-emerald-600 text-white"
+                  >
+                    Sign Up
+                  </Link>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
