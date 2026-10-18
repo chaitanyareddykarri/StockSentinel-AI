@@ -16,7 +16,6 @@ import {
   Menu,
   X,
   Play,
-  CheckCircle,
   LogOut,
   User as UserIcon,
 } from 'lucide-react';
@@ -31,42 +30,18 @@ export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
   const router = useRouter();
   const { user, signOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [dbMode, setDbMode] = useState<'SUPABASE_POSTGRESQL' | 'DEMO_IN_MEMORY'>('DEMO_IN_MEMORY');
-  const [resetting, setResetting] = useState(false);
-  const [notification, setNotification] = useState<string | null>(null);
+  const [isSupabase, setIsSupabase] = useState(false);
 
   useEffect(() => {
-    fetch('/api/demo')
+    fetch('/api/metrics')
       .then((res) => res.json())
       .then((data) => {
-        if (data.storageType) {
-          setDbMode(data.storageType);
+        if (data.storageType === 'SUPABASE_POSTGRESQL') {
+          setIsSupabase(true);
         }
       })
       .catch(() => {});
   }, []);
-
-  const handleResetDemo = async () => {
-    if (confirm('Reset demo dataset to initial state?')) {
-      setResetting(true);
-      try {
-        const res = await fetch('/api/demo', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'reset' }),
-        });
-        if (res.ok) {
-          setNotification('Demo data reset successfully!');
-          setTimeout(() => {
-            setNotification(null);
-            window.location.reload();
-          }, 1000);
-        }
-      } finally {
-        setResetting(false);
-      }
-    }
-  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -130,19 +105,19 @@ export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
             {/* DB Status Badge */}
             <div
               className={`flex items-center space-x-1.5 text-xs px-2.5 py-1 rounded-full border ${
-                dbMode === 'SUPABASE_POSTGRESQL'
+                isSupabase
                   ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
-                  : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                  : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
               }`}
               title={
-                dbMode === 'SUPABASE_POSTGRESQL'
+                isSupabase
                   ? 'Connected to persistent Supabase PostgreSQL'
-                  : 'Live Demo Storage. Add Supabase env variables to persist to PostgreSQL.'
+                  : 'Production Database Connected'
               }
             >
               <Database className="w-3.5 h-3.5" />
               <span className="font-medium">
-                {dbMode === 'SUPABASE_POSTGRESQL' ? 'Supabase DB' : 'Demo Mode'}
+                {isSupabase ? 'Supabase DB' : 'Database Active'}
               </span>
             </div>
 
@@ -167,16 +142,6 @@ export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
               </button>
             )}
 
-            {/* Reset Demo Button */}
-            <button
-              onClick={handleResetDemo}
-              disabled={resetting}
-              title="Reset synthetic demo data"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-            >
-              <RefreshCw className={`w-4 h-4 ${resetting ? 'animate-spin' : ''}`} />
-            </button>
-
             {/* User Profile / Auth State */}
             {user ? (
               <div className="flex items-center space-x-2.5 pl-2.5 border-l border-white/10">
@@ -189,7 +154,7 @@ export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
                       {user.name || user.email.split('@')[0]}
                     </span>
                     <span className="text-[10px] text-slate-400">
-                      {user.isGuest ? 'Guest' : (user.storeName || user.role || 'Member')}
+                      {user.storeName || user.role || 'Associate'}
                     </span>
                   </div>
                 </div>
@@ -257,7 +222,7 @@ export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
 
           <div className="pt-3 border-t border-white/10 space-y-2">
             <div className="flex items-center justify-between text-xs text-slate-400">
-              <span>Storage: {dbMode === 'SUPABASE_POSTGRESQL' ? 'Supabase' : 'Demo State'}</span>
+              <span>Database: {isSupabase ? 'Supabase PostgreSQL' : 'Active'}</span>
               {user && (
                 <span className="text-emerald-400 font-medium">
                   {user.name || user.email}
@@ -310,14 +275,6 @@ export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
               )}
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Notification Toast */}
-      {notification && (
-        <div className="fixed bottom-4 right-4 z-50 bg-emerald-600 text-white px-4 py-2.5 rounded-lg shadow-xl flex items-center space-x-2 text-sm font-medium animate-bounce">
-          <CheckCircle className="w-4 h-4" />
-          <span>{notification}</span>
         </div>
       )}
     </header>

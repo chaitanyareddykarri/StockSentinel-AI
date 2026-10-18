@@ -14,7 +14,6 @@ import {
   RefreshCw,
   AlertCircle,
   CheckCircle2,
-  UserCheck,
 } from 'lucide-react';
 
 function LoginForm() {
@@ -22,7 +21,7 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const redirectPath = searchParams.get('redirect') || '/dashboard';
 
-  const { signInWithEmail, signInWithGoogle, signInAsGuest } = useAuth();
+  const { signInWithEmail, signInWithGoogle } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -75,13 +74,6 @@ function LoginForm() {
     }
   };
 
-  const handleGuestSignIn = () => {
-    signInAsGuest('Guest Store Manager');
-    setSuccessMessage('Logged in as Guest Evaluator. Redirecting...');
-    setTimeout(() => {
-      router.push(redirectPath);
-    }, 400);
-  };
 
   return (
     <div className="min-h-screen bg-[#0a0e17] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -221,15 +213,6 @@ function LoginForm() {
             <span>{googleLoading ? 'Connecting Google...' : 'Continue with Google'}</span>
           </button>
 
-          {/* Fast Guest Mode Button for Reviewers */}
-          <button
-            type="button"
-            onClick={handleGuestSignIn}
-            className="w-full flex items-center justify-center space-x-2 py-2 rounded-xl text-xs font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/20 transition-all cursor-pointer"
-          >
-            <UserCheck className="w-4 h-4 text-indigo-400" />
-            <span>1-Click Evaluator Access (Demo Mode)</span>
-          </button>
 
           {/* Footer Note */}
           <div className="pt-2 text-center text-xs text-slate-400 border-t border-white/5">

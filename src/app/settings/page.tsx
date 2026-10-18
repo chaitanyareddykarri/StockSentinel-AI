@@ -8,7 +8,6 @@ import {
   Sliders,
   Database,
   Cpu,
-  RefreshCw,
   CheckCircle,
 } from 'lucide-react';
 
@@ -18,14 +17,14 @@ export default function SettingsPage() {
   const [slowMoverThreshold, setSlowMoverThreshold] = useState<number>(0.6);
   const [maxRank, setMaxRank] = useState<number>(20);
 
-  const [dbMode, setDbMode] = useState<string>('DEMO_IN_MEMORY');
+  const [isSupabase, setIsSupabase] = useState<boolean>(false);
   const [notification, setNotification] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/api/demo')
+    fetch('/api/metrics')
       .then((res) => res.json())
       .then((data) => {
-        if (data.storageType) setDbMode(data.storageType);
+        if (data.storageType === 'SUPABASE_POSTGRESQL') setIsSupabase(true);
       })
       .catch(() => {});
   }, []);
@@ -33,20 +32,6 @@ export default function SettingsPage() {
   const handleSaveParams = () => {
     setNotification('Algorithm hyperparameters updated successfully!');
     setTimeout(() => setNotification(null), 3000);
-  };
-
-  const handleResetDemo = async () => {
-    if (confirm('Reset demo dataset to initial factory state?')) {
-      const res = await fetch('/api/demo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'reset' }),
-      });
-      if (res.ok) {
-        setNotification('Demo dataset reset successfully.');
-        setTimeout(() => setNotification(null), 3000);
-      }
-    }
   };
 
   return (
@@ -175,19 +160,19 @@ export default function SettingsPage() {
                 </div>
                 <span
                   className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                    dbMode === 'SUPABASE_POSTGRESQL'
+                    isSupabase
                       ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                      : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                      : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
                   }`}
                 >
-                  {dbMode === 'SUPABASE_POSTGRESQL' ? 'Supabase Active' : 'Live Demo Storage'}
+                  {isSupabase ? 'Supabase Active' : 'Production Database Ready'}
                 </span>
               </div>
 
               <p className="text-xs text-slate-400">
-                {dbMode === 'SUPABASE_POSTGRESQL'
+                {isSupabase
                   ? 'Connected to persistent Supabase PostgreSQL. Detection runs, alerts, and audit logs persist permanently.'
-                  : 'Currently operating in Demo Mode. To connect persistent PostgreSQL, configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.'}
+                  : 'Configured for persistent database storage. Add Supabase environment variables in Vercel to sync data across instances.'}
               </p>
 
               <div className="bg-slate-900/60 p-3 rounded-xl border border-white/5 text-[11px] font-mono text-slate-300 space-y-1">
@@ -219,23 +204,6 @@ export default function SettingsPage() {
                   If no external Python service is configured, StockSentinel AI automatically runs the built-in TypeScript statistical baseline engine with zero external dependencies.
                 </p>
               </div>
-            </div>
-
-            {/* Demo Data Management */}
-            <div className="glass-panel p-6 rounded-2xl border border-white/10 flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-bold text-white">Reset Demo Dataset</h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Restore default 3 stores, 30 SKUs, and 60 days of sample telemetry.
-                </p>
-              </div>
-              <button
-                onClick={handleResetDemo}
-                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-white/10 transition-colors cursor-pointer"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Reset Demo</span>
-              </button>
             </div>
           </div>
         </div>

@@ -9,6 +9,7 @@ import {
   ChevronRight,
   TrendingDown,
   Building2,
+  Download,
 } from 'lucide-react';
 
 interface AlertTableProps {
@@ -33,6 +34,34 @@ export function AlertTable({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRisk, setSelectedRisk] = useState<string>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
+
+  const handleExportCsv = () => {
+    if (alerts.length === 0) return;
+    const headers = ['ID', 'Store', 'SKU', 'Product', 'Category', 'Risk Score', 'Risk Category', 'Recorded Stock', 'Zero Days', 'Est Lost Rev Daily', 'Status', 'Reason'];
+    const rows = filteredAlerts.map((a) => [
+      `"${a.id}"`,
+      `"${a.store_name.replace(/"/g, '""')}"`,
+      `"${a.sku}"`,
+      `"${a.product_name.replace(/"/g, '""')}"`,
+      `"${a.category}"`,
+      a.risk_score,
+      a.risk_category,
+      a.recorded_stock,
+      a.consecutive_zero_days,
+      a.est_lost_revenue_daily,
+      a.status,
+      `"${a.primary_reason.replace(/"/g, '""')}"`,
+    ]);
+    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `stocksentinel_alerts_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const filteredAlerts = alerts.filter((a) => {
     if (selectedStore !== 'ALL' && a.store_id !== selectedStore) return false;
@@ -137,6 +166,16 @@ export function AlertTable({
               <option value="FALSE_POSITIVE">False Positive</option>
               <option value="RESOLVED">Resolved</option>
             </select>
+
+            <button
+              onClick={handleExportCsv}
+              disabled={filteredAlerts.length === 0}
+              title="Export visible alerts to CSV file"
+              className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-white/10 hover:border-emerald-500/30 transition-colors disabled:opacity-40 cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Export CSV</span>
+            </button>
           </div>
         </div>
       </div>

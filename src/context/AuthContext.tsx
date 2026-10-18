@@ -10,7 +10,6 @@ export interface AppUser {
   name: string;
   storeName?: string;
   role: 'STORE_MANAGER' | 'INVENTORY_LEAD' | 'ASSOCIATE' | 'EVALUATOR';
-  isGuest?: boolean;
 }
 
 interface AuthContextType {
@@ -21,14 +20,11 @@ interface AuthContextType {
   signInWithEmail: (email: string, password: string) => Promise<{ error?: string }>;
   signUpWithEmail: (email: string, password: string, name: string, storeName?: string) => Promise<{ error?: string }>;
   signInWithGoogle: () => Promise<{ error?: string }>;
-  signInAsGuest: (name?: string) => void;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-const GUEST_STORAGE_KEY = 'stocksentinel_guest_user';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
@@ -49,8 +45,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSession(currentSession);
           setUser(mapSupabaseUser(currentSession.user));
         } else {
-          // Check local guest session
-          checkLocalGuestSession();
+          setSession(null);
+          setUser(null);
         }
         setLoading(false);
       });
@@ -62,7 +58,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (newSession?.user) {
           setUser(mapSupabaseUser(newSession.user));
         } else {
-          checkLocalGuestSession();
+          setUser(null);
         }
         setLoading(false);
       });
@@ -72,25 +68,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         subscription.unsubscribe();
       };
     } else {
-      // Supabase is not configured; check demo/guest session asynchronously
+      // Supabase is not configured yet
       Promise.resolve().then(() => {
         if (!isMounted) return;
-        checkLocalGuestSession();
         setLoading(false);
       });
-    }
-
-    function checkLocalGuestSession() {
-      if (typeof window === 'undefined') return;
-      const stored = localStorage.getItem(GUEST_STORAGE_KEY);
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          setUser(parsed);
-        } catch {
-          localStorage.removeItem(GUEST_STORAGE_KEY);
-        }
-      }
     }
   }, []);
 
@@ -100,29 +82,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       id: sbUser.id,
       email: sbUser.email || 'user@retail.com',
       name: meta.full_name || meta.name || sbUser.email?.split('@')[0] || 'Store Associate',
-      storeName: meta.store_name || 'Downtown Supercenter #101',
+      storeName: meta.store_name || 'Retail Supercenter',
       role: (meta.role as AppUser['role']) || 'STORE_MANAGER',
-      isGuest: false,
     };
   }
 
   const signInWithEmail = useCallback(async (email: string, password: string): Promise<{ error?: string }> => {
     const supabase = getSupabaseClient();
     if (!supabase) {
-      // Demo authentication mode
-      const demoUser: AppUser = {
-        id: `usr-${Date.now().toString(36)}`,
-        email,
-        name: email.split('@')[0],
-        storeName: 'Downtown Supercenter #101',
-        role: 'STORE_MANAGER',
-        isGuest: true,
+      return {
+        error:
+          'Supabase authentication is not configured. Please provide NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your environment variables.',
       };
-      setUser(demoUser);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(demoUser));
-      }
-      return {};
     }
 
     try {
@@ -146,19 +117,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   ): Promise<{ error?: string }> => {
     const supabase = getSupabaseClient();
     if (!supabase) {
-      const demoUser: AppUser = {
-        id: `usr-${Date.now().toString(36)}`,
-        email,
-        name: name || email.split('@')[0],
-        storeName: storeName || 'Metro Express #204',
-        role: 'STORE_MANAGER',
-        isGuest: true,
+      return {
+        error:
+          'Supabase authentication is not configured. Please provide NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your environment variables.',
       };
-      setUser(demoUser);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(demoUser));
-      }
-      return {};
     }
 
     try {
@@ -168,7 +130,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         options: {
           data: {
             full_name: name,
-            store_name: storeName || 'Store #101',
+            store_name: storeName || 'Retail Store #101',
             role: 'STORE_MANAGER',
           },
         },
@@ -189,7 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!supabase) {
       return {
         error:
-          'Supabase is not configured yet. To use Google OAuth, configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY and enable the Google provider in your Supabase dashboard.',
+          'Google OAuth requires Supabase authentication. Configure NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, and enable Google in your Supabase Auth Providers.',
       };
     }
 
@@ -213,21 +175,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const signInAsGuest = useCallback((name: string = 'Demo Evaluator') => {
-    const guestUser: AppUser = {
-      id: `guest-${Date.now().toString(36)}`,
-      email: 'evaluator@stocksentinel.ai',
-      name,
-      storeName: 'Downtown Supercenter #101',
-      role: 'EVALUATOR',
-      isGuest: true,
-    };
-    setUser(guestUser);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(guestUser));
-    }
-  }, []);
-
   const signOut = useCallback(async () => {
     const supabase = getSupabaseClient();
     if (supabase) {
@@ -235,9 +182,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     setUser(null);
     setSession(null);
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem(GUEST_STORAGE_KEY);
-    }
   }, []);
 
   const resetPassword = useCallback(async (email: string): Promise<{ error?: string }> => {
@@ -245,7 +189,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!supabase) {
       return {
         error:
-          'Demo Mode: In demo mode password reset is simulated. Provide Supabase credentials to enable email SMTP delivery.',
+          'Password recovery requires Supabase configuration. Please configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.',
       };
     }
 
@@ -274,7 +218,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signInWithEmail,
       signUpWithEmail,
       signInWithGoogle,
-      signInAsGuest,
       signOut,
       resetPassword,
     }),
@@ -286,7 +229,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signInWithEmail,
       signUpWithEmail,
       signInWithGoogle,
-      signInAsGuest,
       signOut,
       resetPassword,
     ]

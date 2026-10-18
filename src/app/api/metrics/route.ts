@@ -37,7 +37,7 @@ export async function GET() {
     ).length;
 
     const precisionAt20 =
-      totalVerified > 0 ? Number(((confirmedPhantoms / totalVerified) * 100).toFixed(1)) : 84.6;
+      totalVerified > 0 ? Number(((confirmedPhantoms / totalVerified) * 100).toFixed(1)) : 0;
 
     const lastRun = runs.length > 0 ? runs[0].run_date : undefined;
 
@@ -53,7 +53,11 @@ export async function GET() {
       lastDetectionRun: lastRun,
     };
 
-    return NextResponse.json({ success: true, metrics });
+    return NextResponse.json({
+      success: true,
+      metrics,
+      storageType: totalMonitoredSkus > 0 ? 'SUPABASE_POSTGRESQL' : 'STORAGE_READY',
+    });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to calculate metrics';
     return NextResponse.json(

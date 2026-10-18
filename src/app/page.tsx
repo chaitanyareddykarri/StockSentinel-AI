@@ -109,13 +109,6 @@ export default function IntroPage() {
               <LogIn className="w-4 h-4 text-emerald-400" />
               <span>Sign In</span>
             </Link>
-
-            <Link
-              href="/dashboard"
-              className="flex items-center space-x-2 px-6 py-3 rounded-xl text-sm font-semibold bg-slate-950 text-slate-400 hover:text-white border border-white/5 hover:border-white/15 transition-all cursor-pointer"
-            >
-              <span>Explore Live Demo</span>
-            </Link>
           </div>
         </div>
       </section>
@@ -282,7 +275,7 @@ export default function IntroPage() {
               Get Started
             </Link>
             <Link href="/dashboard" className="hover:text-slate-300 transition-colors">
-              Live Dashboard
+              Dashboard
             </Link>
           </div>
         </div>

@@ -388,11 +388,6 @@ export async function importCsvRecords(
   return { inserted: records.length, errors: [] };
 }
 
-export function resetDemoData(): void {
-  memoryState = null; // Forces re-initialization
-  getMemoryStore();
-}
-
 export function isUsingSupabase(): boolean {
   return isSupabaseConfigured();
 }

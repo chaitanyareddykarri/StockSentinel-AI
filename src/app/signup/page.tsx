@@ -16,12 +16,11 @@ import {
   RefreshCw,
   AlertCircle,
   CheckCircle2,
-  UserCheck,
 } from 'lucide-react';
 
 export default function SignupPage() {
   const router = useRouter();
-  const { signUpWithEmail, signInWithGoogle, signInAsGuest } = useAuth();
+  const { signUpWithEmail, signInWithGoogle } = useAuth();
 
   const [name, setName] = useState('');
   const [storeName, setStoreName] = useState('');
@@ -79,13 +78,6 @@ export default function SignupPage() {
     }
   };
 
-  const handleGuestSignIn = () => {
-    signInAsGuest('Guest Lead Auditor');
-    setSuccessMessage('Logged in as Guest Evaluator. Redirecting...');
-    setTimeout(() => {
-      router.push('/dashboard');
-    }, 400);
-  };
 
   return (
     <div className="min-h-screen bg-[#0a0e17] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -241,14 +233,6 @@ export default function SignupPage() {
             <span>{googleLoading ? 'Connecting Google...' : 'Sign up with Google'}</span>
           </button>
 
-          <button
-            type="button"
-            onClick={handleGuestSignIn}
-            className="w-full flex items-center justify-center space-x-2 py-2 rounded-xl text-xs font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/20 transition-all cursor-pointer"
-          >
-            <UserCheck className="w-4 h-4 text-indigo-400" />
-            <span>1-Click Evaluator Access (Demo Mode)</span>
-          </button>
 
           <div className="pt-2 text-center text-xs text-slate-400 border-t border-white/5">
             Already have an account?{' '}
