@@ -28,7 +28,14 @@ function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(() => {
+    const err = searchParams.get('error') || searchParams.get('error_description');
+    if (!err) return null;
+    if (err.includes('origin_mismatch')) {
+      return 'Google OAuth Error (origin_mismatch): Register your current domain/port under "Authorized JavaScript origins" in Google Cloud Console Credentials.';
+    }
+    return decodeURIComponent(err);
+  });
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
