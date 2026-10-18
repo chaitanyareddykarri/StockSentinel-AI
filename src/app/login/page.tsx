@@ -120,14 +120,14 @@ function LoginForm() {
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1">
-                Store Associate Email
+                Email Address
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
                 <input
                   type="email"
                   required
-                  placeholder="manager@store101.com"
+                  placeholder="name@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-slate-950 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
@@ -220,23 +220,6 @@ function LoginForm() {
             <span>{googleLoading ? 'Connecting Google...' : 'Continue with Google'}</span>
           </button>
 
-
-          {/* Quick Credential Helper */}
-          <div className="p-2.5 rounded-xl bg-slate-900/80 border border-white/5 text-[11px] text-slate-400 flex items-center justify-between">
-            <span>
-              Manager: <code className="text-emerald-400">manager@store101.com</code>
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setEmail('manager@store101.com');
-                setPassword('Sentinel2026!');
-              }}
-              className="text-[10px] font-semibold text-emerald-400 hover:text-emerald-300 underline cursor-pointer"
-            >
-              Autofill
-            </button>
-          </div>
 
           {/* Footer Note */}
           <div className="pt-2 text-center text-xs text-slate-400 border-t border-white/5">

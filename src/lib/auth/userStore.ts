@@ -69,26 +69,6 @@ function loadUsers(): Map<string, UserRecord> {
     console.warn('[UserStore] Could not read users file, using memory store:', err);
   }
 
-  // Ensure default seed store manager exists
-  const seedEmail = 'manager@store101.com';
-  if (!usersCache.has(seedEmail)) {
-    const salt = crypto.randomBytes(16).toString('hex');
-    const hash = hashPassword('Sentinel2026!', salt);
-    const defaultManager: UserRecord = {
-      id: 'usr-default-manager',
-      email: seedEmail,
-      name: 'Elena Rostova',
-      storeName: 'Downtown Supercenter #101',
-      role: 'STORE_MANAGER',
-      passwordHash: hash,
-      salt,
-      provider: 'email',
-      createdAt: new Date().toISOString(),
-    };
-    usersCache.set(seedEmail, defaultManager);
-    saveUsersToDisk();
-  }
-
   return usersCache;
 }
 

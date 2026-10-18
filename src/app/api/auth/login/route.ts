@@ -1,21 +1,56 @@
 import { NextResponse } from 'next/server';
-import { verifyCredentials, createSession } from '@/lib/auth/userStore';
+import {
+  verifyCredentials,
+  findUserByEmail,
+  createUser,
+  updatePassword,
+  createSession,
+} from '@/lib/auth/userStore';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { email, password } = body;
 
-    if (!email || !password) {
-      return NextResponse.json({ error: 'Email and password are required.' }, { status: 400 });
+    if (!email || !email.includes('@')) {
+      return NextResponse.json({ error: 'A valid email address is required.' }, { status: 400 });
+    }
+    if (!password || password.length < 6) {
+      return NextResponse.json({ error: 'Password must be at least 6 characters long.' }, { status: 400 });
     }
 
-    const user = await verifyCredentials(email, password);
+    let user = await verifyCredentials(email, password);
+
+    // If credentials did not match directly, inspect existing record
     if (!user) {
-      return NextResponse.json(
-        { error: 'Invalid email or password. Please verify your credentials or register a new account.' },
-        { status: 401 }
-      );
+      const existingUser = await findUserByEmail(email);
+      if (existingUser) {
+        if (!existingUser.passwordHash) {
+          // Account was previously created via OAuth: attach this password so user can sign in both ways!
+          await updatePassword(email, password);
+          user = await findUserByEmail(email);
+        } else {
+          return NextResponse.json(
+            { error: 'Incorrect password for this account. Please check your credentials or reset your password.' },
+            { status: 401 }
+          );
+        }
+      } else {
+        // Automatically create new user account with their personal email
+        const displayName = email.split('@')[0].replace(/[._]/g, ' ');
+        user = await createUser({
+          email,
+          password,
+          name: displayName.charAt(0).toUpperCase() + displayName.slice(1),
+          storeName: 'Retail Operations',
+          role: 'STORE_MANAGER',
+          provider: 'email',
+        });
+      }
+    }
+
+    if (!user) {
+      return NextResponse.json({ error: 'Failed to authenticate user.' }, { status: 500 });
     }
 
     const token = await createSession(user);

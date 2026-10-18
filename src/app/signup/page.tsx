@@ -119,7 +119,7 @@ export default function SignupPage() {
                 <input
                   type="text"
                   required
-                  placeholder="Elena Rostova"
+                  placeholder="Your Full Name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="w-full bg-slate-950 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
@@ -135,7 +135,7 @@ export default function SignupPage() {
                 <Building className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
                 <input
                   type="text"
-                  placeholder="Downtown Supercenter #101"
+                  placeholder="Store Location / Organization (Optional)"
                   value={storeName}
                   onChange={(e) => setStoreName(e.target.value)}
                   className="w-full bg-slate-950 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
@@ -144,13 +144,13 @@ export default function SignupPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">Work Email</label>
+              <label className="block text-xs font-medium text-slate-300 mb-1">Email Address</label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
                 <input
                   type="email"
                   required
-                  placeholder="e.rostova@retailgroup.com"
+                  placeholder="name@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-slate-950 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
