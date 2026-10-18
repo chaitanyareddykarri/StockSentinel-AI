@@ -81,11 +81,9 @@ Format your response as valid JSON matching this schema:
     if (geminiKey) {
       const geminiModels = [
         'gemini-3.5-flash',
-        'gemini-3.8-flash',
-        'gemini-2.5-flash',
-        'gemini-2.0-flash',
-        'gemini-1.5-flash',
         'gemini-flash-latest',
+        'gemini-3.8-flash',
+        'gemini-flash-lite-latest',
       ];
 
       let lastError = '';
@@ -93,7 +91,7 @@ Format your response as valid JSON matching this schema:
       for (const model of geminiModels) {
         try {
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 7000);
+          const timeoutId = setTimeout(() => controller.abort(), 25000);
 
           const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
           const response = await fetch(geminiUrl, {
@@ -115,12 +113,22 @@ Format your response as valid JSON matching this schema:
             const data = await response.json();
             const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
             if (rawText) {
-              const parsed = JSON.parse(rawText);
+              const cleaned = rawText
+                .replace(/^```(?:json)?\s*/i, '')
+                .replace(/\s*```$/i, '')
+                .trim();
+              const parsed = JSON.parse(cleaned);
               return NextResponse.json({
                 success: true,
                 aiAvailable: true,
                 provider: `GEMINI (${model})`,
-                diagnostic: parsed,
+                diagnostic: {
+                  hypothesis: parsed.hypothesis || 'Phantom stock anomaly identified.',
+                  actionSteps: Array.isArray(parsed.actionSteps)
+                    ? parsed.actionSteps
+                    : [parsed.actionSteps || 'Inspect physical shelf location.'],
+                  revenueImpact: parsed.revenueImpact || 'Elevated risk of stock-out revenue loss.',
+                },
               });
             }
           } else {
