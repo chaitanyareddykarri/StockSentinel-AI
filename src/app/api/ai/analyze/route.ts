@@ -25,8 +25,20 @@ export async function POST(request: Request) {
       );
     }
 
-    const geminiKey = process.env.GEMINI_API_KEY;
-    const openAiKey = process.env.OPENAI_API_KEY;
+    const rawGeminiKey =
+      process.env.GEMINI_API_KEY ||
+      process.env.GOOGLE_API_KEY ||
+      process.env.GEMINI_KEY ||
+      process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+
+    const geminiKey = rawGeminiKey?.trim().replace(/^["']|["']$/g, '');
+
+    const rawOpenAiKey =
+      process.env.OPENAI_API_KEY ||
+      process.env.OPENAI_KEY ||
+      process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+
+    const openAiKey = rawOpenAiKey?.trim().replace(/^["']|["']$/g, '');
 
     // Check if any AI provider key is configured
     if (!geminiKey && !openAiKey) {
@@ -35,7 +47,7 @@ export async function POST(request: Request) {
         aiAvailable: false,
         provider: 'NONE',
         message:
-          'AI-Enhanced Root-Cause Reasoning is unavailable because neither GEMINI_API_KEY nor OPENAI_API_KEY is configured in server environment variables. Baseline Statistical Analysis is active.',
+          'AI-Enhanced Root-Cause Reasoning is unavailable because neither GEMINI_API_KEY nor OPENAI_API_KEY is configured in server environment variables. Baseline Statistical Analysis is active. Configure GEMINI_API_KEY in your Vercel Project Settings > Environment Variables, then redeploy.',
         diagnostic: null,
       });
     }
@@ -67,7 +79,17 @@ Format your response as valid JSON matching this schema:
 
     // 1. Try Google Gemini if configured
     if (geminiKey) {
-      const geminiModels = ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
+      const geminiModels = [
+        'gemini-3.5-flash',
+        'gemini-3.8-flash',
+        'gemini-2.5-flash',
+        'gemini-2.0-flash',
+        'gemini-1.5-flash',
+        'gemini-flash-latest',
+      ];
+
+      let lastError = '';
+
       for (const model of geminiModels) {
         try {
           const controller = new AbortController();
@@ -101,10 +123,25 @@ Format your response as valid JSON matching this schema:
                 diagnostic: parsed,
               });
             }
+          } else {
+            const errText = await response.text();
+            lastError = `HTTP ${response.status}: ${errText}`;
+            console.warn(`Gemini model ${model} failed:`, lastError);
           }
         } catch (err: unknown) {
-          console.warn(`Gemini model ${model} failed, trying next:`, err instanceof Error ? err.message : err);
+          lastError = err instanceof Error ? err.message : String(err);
+          console.warn(`Gemini model ${model} request error:`, lastError);
         }
+      }
+
+      if (!openAiKey) {
+        return NextResponse.json({
+          success: true,
+          aiAvailable: false,
+          provider: 'GEMINI',
+          message: `Gemini API call failed across all attempted models (${lastError.substring(0, 150)}). Please check that your GEMINI_API_KEY is valid.`,
+          diagnostic: null,
+        });
       }
     }
 
@@ -125,12 +162,13 @@ Format your response as valid JSON matching this schema:
             messages: [
               {
                 role: 'system',
-                content: 'You are a retail inventory AI specialist. Always respond with valid JSON.',
+                content:
+                  'You are an expert retail loss-prevention and inventory analyst. You diagnose phantom stock-out causes based on sales streaks and on-hand inventory.',
               },
               { role: 'user', content: promptContext },
             ],
-            temperature: 0.2,
             response_format: { type: 'json_object' },
+            temperature: 0.2,
           }),
           signal: controller.signal,
         });
@@ -145,27 +183,29 @@ Format your response as valid JSON matching this schema:
             return NextResponse.json({
               success: true,
               aiAvailable: true,
-              provider: 'OPENAI',
+              provider: 'OPENAI (gpt-4o-mini)',
               diagnostic: parsed,
             });
           }
         }
       } catch (err: unknown) {
-        console.error('OpenAI API request failed:', err instanceof Error ? err.message : err);
+        console.warn('OpenAI analysis failed:', err instanceof Error ? err.message : err);
       }
     }
 
-    // If both failed or timed out
+    // Fallback if providers were reached but failed
     return NextResponse.json({
       success: true,
       aiAvailable: false,
-      provider: 'ERROR',
-      message:
-        'The configured AI provider was unreachable or timed out. Falling back to the deterministic Baseline Statistical Analysis.',
+      provider: 'NONE',
+      message: 'AI providers did not return diagnostics. Baseline Statistical Analysis is active.',
       diagnostic: null,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'AI diagnostic failed';
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    );
   }
 }
