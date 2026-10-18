@@ -135,6 +135,20 @@ export async function POST(request: Request) {
 
     const { inserted, errors } = await importCsvRecords(entityType as ValidEntity, validRows);
 
+    if (errors.length > 0 && inserted === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Database import failed: ${errors.join(', ')}`,
+          storageErrors: errors,
+          totalRows: records.length,
+          skipped: rowErrors.length,
+          rowErrors,
+        },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json({
       success: true,
       totalRows: records.length,

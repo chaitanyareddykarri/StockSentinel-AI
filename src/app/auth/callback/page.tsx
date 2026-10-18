@@ -4,6 +4,7 @@ import React, { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ShieldAlert, RefreshCw, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
+import { getSupabaseClient } from '@/lib/db/supabaseClient';
 
 function CallbackHandler() {
   const router = useRouter();
@@ -17,6 +18,24 @@ function CallbackHandler() {
       if (errorDesc) {
         setError(errorDesc);
         return;
+      }
+
+      // 2. Supabase Auth code exchange
+      const code = searchParams.get('code');
+      const supabase = getSupabaseClient();
+      if (code && supabase) {
+        try {
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+          if (exchangeError) {
+            setError(exchangeError.message);
+            return;
+          }
+          router.push('/dashboard');
+          return;
+        } catch (err: unknown) {
+          setError(err instanceof Error ? err.message : 'Supabase OAuth session exchange failed.');
+          return;
+        }
       }
 
       // 2. Check hash fragments for Google OAuth tokens (response_type=token id_token)

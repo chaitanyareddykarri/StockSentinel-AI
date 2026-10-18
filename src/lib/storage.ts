@@ -14,6 +14,8 @@ import {
 } from '@/types';
 import { getInitialDemoState } from './demoData';
 import { getSupabaseClient, isSupabaseConfigured } from './db/supabaseClient';
+import { getSupabaseServerClient, isSupabaseServerConfigured } from './db/supabaseServer';
+import { SupabaseClient } from '@supabase/supabase-js';
 
 // Store structure
 interface InMemoryStore {
@@ -28,6 +30,10 @@ interface InMemoryStore {
 }
 
 let memoryState: InMemoryStore | null = null;
+
+function getDbClient(): SupabaseClient | null {
+  return getSupabaseServerClient() || getSupabaseClient();
+}
 
 function getDbFilePath(): string {
   const localDir = path.join(process.cwd(), 'data');
@@ -100,17 +106,6 @@ function getMemoryStore(): InMemoryStore {
         changed_by: initial.alerts[3]?.verified_by || 'Sarah Jenkins',
         created_at: initial.alerts[3]?.verified_at || '2026-10-17T10:15:00Z',
       },
-      {
-        id: 'log-03',
-        alert_id: initial.alerts[5]?.id || 'alert-06',
-        previous_status: 'OPEN',
-        new_status: 'FALSE_POSITIVE',
-        outcome: 'IN_STOCK_FALSE_ALARM',
-        shelf_count: 14,
-        notes: initial.alerts[5]?.investigation_notes || 'Full facing on shelf.',
-        changed_by: initial.alerts[5]?.verified_by || 'Elena Rostova',
-        created_at: initial.alerts[5]?.verified_at || '2026-10-17T11:30:00Z',
-      },
     ];
 
     memoryState = {
@@ -122,33 +117,38 @@ function getMemoryStore(): InMemoryStore {
   return memoryState;
 }
 
-export async function getStores(): Promise<Store[]> {
-  const supabase = getSupabaseClient();
+export async function getStores(userId?: string): Promise<Store[]> {
+  const supabase = getDbClient();
   if (supabase) {
     try {
-      const { data, error } = await supabase.from('stores').select('*').order('name');
+      let query = supabase.from('stores').select('*').order('name');
+      if (userId) query = query.eq('user_id', userId);
+      const { data, error } = await query;
       if (!error && data && data.length > 0) return data as Store[];
     } catch {}
   }
   return getMemoryStore().stores;
 }
 
-export async function getProducts(): Promise<Product[]> {
-  const supabase = getSupabaseClient();
+export async function getProducts(userId?: string): Promise<Product[]> {
+  const supabase = getDbClient();
   if (supabase) {
     try {
-      const { data, error } = await supabase.from('products').select('*').order('name');
+      let query = supabase.from('products').select('*').order('name');
+      if (userId) query = query.eq('user_id', userId);
+      const { data, error } = await query;
       if (!error && data && data.length > 0) return data as Product[];
     } catch {}
   }
   return getMemoryStore().products;
 }
 
-export async function getDailySales(storeId?: string, sku?: string): Promise<DailySale[]> {
-  const supabase = getSupabaseClient();
+export async function getDailySales(storeId?: string, sku?: string, userId?: string): Promise<DailySale[]> {
+  const supabase = getDbClient();
   if (supabase) {
     try {
       let query = supabase.from('daily_sales').select('*').order('date', { ascending: true });
+      if (userId) query = query.eq('user_id', userId);
       if (storeId && storeId !== 'ALL') query = query.eq('store_id', storeId);
       if (sku) query = query.eq('sku', sku);
       const { data, error } = await query;
@@ -162,11 +162,12 @@ export async function getDailySales(storeId?: string, sku?: string): Promise<Dai
   return list;
 }
 
-export async function getInventorySnapshots(storeId?: string, sku?: string): Promise<InventorySnapshot[]> {
-  const supabase = getSupabaseClient();
+export async function getInventorySnapshots(storeId?: string, sku?: string, userId?: string): Promise<InventorySnapshot[]> {
+  const supabase = getDbClient();
   if (supabase) {
     try {
       let query = supabase.from('inventory_snapshots').select('*').order('date', { ascending: true });
+      if (userId) query = query.eq('user_id', userId);
       if (storeId && storeId !== 'ALL') query = query.eq('store_id', storeId);
       if (sku) query = query.eq('sku', sku);
       const { data, error } = await query;
@@ -180,11 +181,13 @@ export async function getInventorySnapshots(storeId?: string, sku?: string): Pro
   return list;
 }
 
-export async function getPromotions(): Promise<Promotion[]> {
-  const supabase = getSupabaseClient();
+export async function getPromotions(userId?: string): Promise<Promotion[]> {
+  const supabase = getDbClient();
   if (supabase) {
     try {
-      const { data, error } = await supabase.from('promotions').select('*');
+      let query = supabase.from('promotions').select('*');
+      if (userId) query = query.eq('user_id', userId);
+      const { data, error } = await query;
       if (!error && data && data.length > 0) return data as Promotion[];
     } catch {}
   }
@@ -196,11 +199,13 @@ export async function getAlerts(filters?: {
   risk?: string;
   status?: string;
   search?: string;
+  userId?: string;
 }): Promise<Alert[]> {
-  const supabase = getSupabaseClient();
+  const supabase = getDbClient();
   if (supabase) {
     try {
       let query = supabase.from('alerts').select('*').order('risk_score', { ascending: false });
+      if (filters?.userId) query = query.eq('user_id', filters.userId);
       if (filters?.storeId && filters.storeId !== 'ALL') query = query.eq('store_id', filters.storeId);
       if (filters?.risk && filters.risk !== 'ALL') query = query.eq('risk_category', filters.risk);
       if (filters?.status && filters.status !== 'ALL') query = query.eq('status', filters.status);
@@ -243,11 +248,13 @@ export async function getAlerts(filters?: {
   return list;
 }
 
-export async function getAlertById(alertId: string): Promise<Alert | null> {
-  const supabase = getSupabaseClient();
+export async function getAlertById(alertId: string, userId?: string): Promise<Alert | null> {
+  const supabase = getDbClient();
   if (supabase) {
     try {
-      const { data, error } = await supabase.from('alerts').select('*').eq('id', alertId).single();
+      let query = supabase.from('alerts').select('*').eq('id', alertId);
+      if (userId) query = query.eq('user_id', userId);
+      const { data, error } = await query.single();
       if (!error && data) return data as Alert;
     } catch {}
   }
@@ -261,14 +268,18 @@ export async function updateAlertStatus(
   outcome?: VerificationOutcome,
   notes?: string,
   shelfCount?: number,
-  auditor: string = 'Store Associate'
+  auditor: string = 'Store Associate',
+  userId?: string
 ): Promise<Alert | null> {
   const now = new Date().toISOString();
-  const supabase = getSupabaseClient();
+  const supabase = getDbClient();
 
   if (supabase) {
     try {
-      const { data: currentAlert } = await supabase.from('alerts').select('*').eq('id', alertId).single();
+      let alertQuery = supabase.from('alerts').select('*').eq('id', alertId);
+      if (userId) alertQuery = alertQuery.eq('user_id', userId);
+      const { data: currentAlert } = await alertQuery.single();
+
       if (currentAlert) {
         const prevStatus = currentAlert.status;
         const updatePayload: Partial<Alert> = {
@@ -290,7 +301,7 @@ export async function updateAlertStatus(
 
         if (!error && updated) {
           await supabase.from('verification_audit_log').insert({
-            id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            user_id: currentAlert.user_id || userId,
             alert_id: alertId,
             previous_status: prevStatus,
             new_status: newStatus,
@@ -340,11 +351,12 @@ export async function updateAlertStatus(
   return alert;
 }
 
-export async function getAuditLogs(alertId?: string): Promise<AuditLogEntry[]> {
-  const supabase = getSupabaseClient();
+export async function getAuditLogs(alertId?: string, userId?: string): Promise<AuditLogEntry[]> {
+  const supabase = getDbClient();
   if (supabase) {
     try {
       let query = supabase.from('verification_audit_log').select('*').order('created_at', { ascending: false });
+      if (userId) query = query.eq('user_id', userId);
       if (alertId) query = query.eq('alert_id', alertId);
       const { data, error } = await query;
       if (!error && data && data.length > 0) return data as AuditLogEntry[];
@@ -356,23 +368,26 @@ export async function getAuditLogs(alertId?: string): Promise<AuditLogEntry[]> {
   return list;
 }
 
-export async function getDetectionRuns(): Promise<DetectionRun[]> {
-  const supabase = getSupabaseClient();
+export async function getDetectionRuns(userId?: string): Promise<DetectionRun[]> {
+  const supabase = getDbClient();
   if (supabase) {
     try {
-      const { data, error } = await supabase.from('detection_runs').select('*').order('run_date', { ascending: false });
+      let query = supabase.from('detection_runs').select('*').order('run_date', { ascending: false });
+      if (userId) query = query.eq('user_id', userId);
+      const { data, error } = await query;
       if (!error && data && data.length > 0) return data as DetectionRun[];
     } catch {}
   }
   return getMemoryStore().detectionRuns;
 }
 
-export async function saveDetectionRun(run: DetectionRun, newAlerts: Alert[]): Promise<void> {
-  const supabase = getSupabaseClient();
+export async function saveDetectionRun(run: DetectionRun, newAlerts: Alert[], userId?: string): Promise<void> {
+  const supabase = getDbClient();
   if (supabase) {
     try {
       await supabase.from('detection_runs').insert({
         id: run.id,
+        user_id: run.user_id || userId,
         run_date: run.run_date,
         store_id: run.store_id,
         total_skus_analyzed: run.total_skus_analyzed,
@@ -387,6 +402,7 @@ export async function saveDetectionRun(run: DetectionRun, newAlerts: Alert[]): P
       if (newAlerts.length > 0) {
         const alertRows = newAlerts.map((a) => ({
           id: a.id,
+          user_id: a.user_id || run.user_id || userId,
           run_id: run.id,
           store_id: a.store_id,
           store_name: a.store_name,
@@ -416,7 +432,7 @@ export async function saveDetectionRun(run: DetectionRun, newAlerts: Alert[]): P
     } catch {}
   }
 
-  // Built-in persistent storage
+  // Built-in persistent storage fallback
   const store = getMemoryStore();
   store.detectionRuns.unshift(run);
   store.alerts = [...newAlerts, ...store.alerts];
@@ -425,22 +441,62 @@ export async function saveDetectionRun(run: DetectionRun, newAlerts: Alert[]): P
 
 export async function importCsvRecords(
   entityType: 'stores' | 'products' | 'daily_sales' | 'inventory_snapshots' | 'promotions',
-  records: Record<string, unknown>[]
+  records: Record<string, unknown>[],
+  userId?: string,
+  filename: string = 'import.csv'
 ): Promise<{ inserted: number; errors: string[] }> {
-  const supabase = getSupabaseClient();
+  const supabase = getDbClient();
   const errors: string[] = [];
+
+  if (records.length === 0) {
+    return { inserted: 0, errors: ['No valid records found in the import file.'] };
+  }
 
   if (supabase) {
     try {
-      const { error } = await supabase.from(entityType).upsert(records);
-      if (!error) {
-        return { inserted: records.length, errors: [] };
+      const recordsToInsert = userId
+        ? records.map((r) => ({ ...r, user_id: userId }))
+        : records;
+
+      const { error } = await supabase.from(entityType).upsert(recordsToInsert);
+      if (error) {
+        errors.push(`Supabase Database Error: ${error.message}`);
+        if (userId) {
+          try {
+            await supabase.from('import_jobs').insert({
+              user_id: userId,
+              entity_type: entityType,
+              filename,
+              records_count: 0,
+              status: 'FAILED',
+              errors: [error.message],
+            });
+          } catch {}
+        }
+        return { inserted: 0, errors };
       }
-      errors.push(`Cloud Database notice: ${error.message}. Saved to local persistent database.`);
-    } catch {}
+
+      if (userId) {
+        try {
+          await supabase.from('import_jobs').insert({
+            user_id: userId,
+            entity_type: entityType,
+            filename,
+            records_count: records.length,
+            status: 'COMPLETED',
+            errors: [],
+          });
+        } catch {}
+      }
+
+      return { inserted: records.length, errors: [] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Database communication failed';
+      return { inserted: 0, errors: [msg] };
+    }
   }
 
-  // Built-in persistent import
+  // Built-in persistent import fallback
   const store = getMemoryStore();
   if (entityType === 'stores') {
     const casted = records as unknown as Store[];
@@ -461,5 +517,5 @@ export async function importCsvRecords(
 }
 
 export function isUsingSupabase(): boolean {
-  return isSupabaseConfigured();
+  return isSupabaseConfigured() || isSupabaseServerConfigured();
 }

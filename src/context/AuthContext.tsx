@@ -1,6 +1,8 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
+import { getSupabaseClient, isSupabaseConfigured } from '@/lib/db/supabaseClient';
+import { User as SupabaseUser } from '@supabase/supabase-js';
 
 export interface AppUser {
   id: string;
@@ -14,6 +16,7 @@ export interface AppUser {
 interface AuthContextType {
   user: AppUser | null;
   loading: boolean;
+  isSupabaseAuth: boolean;
   signInWithEmail: (email: string, password: string) => Promise<{ error?: string }>;
   signUpWithEmail: (email: string, password: string, name: string, storeName?: string) => Promise<{ error?: string }>;
   signInWithGoogle: () => Promise<{ error?: string }>;
@@ -29,26 +32,21 @@ const GOOGLE_CLIENT_ID =
   process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
   '605266708084-3h78ecdqjt1nh11f7obl8fsojv31befu.apps.googleusercontent.com';
 
-declare global {
-  interface Window {
-    google?: {
-      accounts: {
-        id: {
-          initialize: (config: {
-            client_id: string;
-            callback: (response: { credential: string }) => void;
-            auto_select?: boolean;
-            cancel_on_tap_outside?: boolean;
-          }) => void;
-          prompt: (momentListener?: (notification: { isNotDisplayed: () => boolean; isSkippedMoment: () => boolean }) => void) => void;
-          renderButton: (parent: HTMLElement, options: Record<string, unknown>) => void;
-        };
-      };
-    };
-  }
+function mapSupabaseUser(sbUser: SupabaseUser): AppUser {
+  const meta = sbUser.user_metadata || {};
+  return {
+    id: sbUser.id,
+    email: sbUser.email || '',
+    name: meta.full_name || meta.name || sbUser.email?.split('@')[0] || 'Store Associate',
+    storeName: meta.store_name || 'Retail Supercenter',
+    role: (meta.role as AppUser['role']) || 'STORE_MANAGER',
+    avatarUrl: meta.avatar_url || meta.picture,
+  };
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const isSupabaseAuth = isSupabaseConfigured();
+
   const [user, setUser] = useState<AppUser | null>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -63,53 +61,102 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Load GIS script dynamically if needed
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    if (!document.getElementById('google-gsi-client')) {
-      const script = document.createElement('script');
-      script.id = 'google-gsi-client';
-      script.src = 'https://accounts.google.com/gsi/client';
-      script.async = true;
-      script.defer = true;
-      document.body.appendChild(script);
-    }
-  }, []);
-
-  // Hydrate session on mount
+  // Synchronize session on mount
   useEffect(() => {
     let isMounted = true;
+    const supabase = getSupabaseClient();
 
-    // Verify actual server session
-    fetch('/api/auth/session')
-      .then((res) => res.json())
-      .then((data) => {
+    if (supabase) {
+      // 1. Check existing Supabase session
+      supabase.auth.getSession().then(({ data: { session } }) => {
         if (!isMounted) return;
-        if (data.user) {
-          setUser(data.user);
+        if (session?.user) {
+          const mapped = mapSupabaseUser(session.user);
+          setUser(mapped);
           try {
-            localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data.user));
+            localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(mapped));
           } catch {}
         } else {
-          // If no active server session, clean stale cached profile
+          setUser(null);
           try {
             localStorage.removeItem(USER_STORAGE_KEY);
           } catch {}
-          setUser(null);
         }
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (isMounted) setLoading(false);
+        setLoading(false);
       });
 
-    return () => {
-      isMounted = false;
-    };
+      // 2. Listen to real-time auth changes
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (!isMounted) return;
+        if (session?.user) {
+          const mapped = mapSupabaseUser(session.user);
+          setUser(mapped);
+          try {
+            localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(mapped));
+          } catch {}
+        } else {
+          setUser(null);
+          try {
+            localStorage.removeItem(USER_STORAGE_KEY);
+          } catch {}
+        }
+        setLoading(false);
+      });
+
+      return () => {
+        isMounted = false;
+        subscription.unsubscribe();
+      };
+    } else {
+      // Standalone fallback: verify local server session
+      fetch('/api/auth/session')
+        .then((res) => res.json())
+        .then((data) => {
+          if (!isMounted) return;
+          if (data.user) {
+            setUser(data.user);
+            try {
+              localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data.user));
+            } catch {}
+          } else {
+            try {
+              localStorage.removeItem(USER_STORAGE_KEY);
+            } catch {}
+            setUser(null);
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (isMounted) setLoading(false);
+        });
+
+      return () => {
+        isMounted = false;
+      };
+    }
   }, []);
 
   const signInWithEmail = useCallback(async (email: string, password: string): Promise<{ error?: string }> => {
+    const supabase = getSupabaseClient();
+
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) return { error: error.message };
+        if (data.user) {
+          const mapped = mapSupabaseUser(data.user);
+          setUser(mapped);
+          try {
+            localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(mapped));
+          } catch {}
+        }
+        return {};
+      } catch (err: unknown) {
+        return { error: err instanceof Error ? err.message : 'Supabase authentication failed.' };
+      }
+    }
+
+    // Standalone fallback
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
@@ -135,6 +182,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUpWithEmail = useCallback(
     async (email: string, password: string, name: string, storeName?: string): Promise<{ error?: string }> => {
+      const supabase = getSupabaseClient();
+
+      if (supabase) {
+        try {
+          const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              data: {
+                full_name: name,
+                store_name: storeName || 'Retail Supercenter',
+                role: 'STORE_MANAGER',
+              },
+            },
+          });
+          if (error) return { error: error.message };
+          if (data.user) {
+            const mapped = mapSupabaseUser(data.user);
+            setUser(mapped);
+            try {
+              localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(mapped));
+            } catch {}
+          }
+          return {};
+        } catch (err: unknown) {
+          return { error: err instanceof Error ? err.message : 'Supabase registration failed.' };
+        }
+      }
+
+      // Standalone fallback
       try {
         const res = await fetch('/api/auth/register', {
           method: 'POST',
@@ -160,85 +237,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  const handleGoogleCredential = useCallback(async (credential: string): Promise<{ error?: string }> => {
-    try {
-      const res = await fetch('/api/auth/google', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credential }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        return { error: data.error || 'Google login failed.' };
-      }
-
-      setUser(data.user);
-      try {
-        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data.user));
-      } catch {}
-
-      // Refresh or route to dashboard
-      if (typeof window !== 'undefined') {
-        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-        window.location.assign(`${window.location.origin}/dashboard`);
-      }
-      return {};
-    } catch (err: unknown) {
-      return { error: err instanceof Error ? err.message : 'Failed to complete Google authentication.' };
-    }
-  }, []);
-
   const signInWithGoogle = useCallback(async (): Promise<{ error?: string }> => {
-    if (typeof window === 'undefined') return { error: 'Window not defined' };
+    const supabase = getSupabaseClient();
 
-    // 1. Try Google Identity Services One-Tap / Popup first
-    if (window.google?.accounts?.id) {
+    if (supabase) {
       try {
-        window.google.accounts.id.initialize({
-          client_id: GOOGLE_CLIENT_ID,
-          callback: (response) => {
-            if (response.credential) {
-              handleGoogleCredential(response.credential);
-            }
-          },
-          auto_select: false,
-          cancel_on_tap_outside: true,
-        });
+        const origin =
+          typeof window !== 'undefined'
+            ? window.location.origin
+            : process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
-        window.google.accounts.id.prompt((notification) => {
-          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-            // If prompt was suppressed, fall back to standard OAuth 2.0 redirect
-            const origin = window.location.origin;
-            const redirectUri = `${origin}/auth/callback`;
-            const oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(
-              GOOGLE_CLIENT_ID
-            )}&redirect_uri=${encodeURIComponent(
-              redirectUri
-            )}&response_type=token%20id_token&scope=openid%20email%20profile&nonce=${Date.now()}`;
-            window.location.href = oauthUrl;
-          }
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: `${origin}/auth/callback`,
+          },
         });
+        if (error) return { error: error.message };
         return {};
-      } catch (err) {
-        console.warn('GIS prompt error:', err);
+      } catch (err: unknown) {
+        return { error: err instanceof Error ? err.message : 'Supabase Google OAuth initialization failed.' };
       }
     }
 
-    // 2. Direct OAuth 2.0 redirect fallback
-    const origin = window.location.origin;
-    const redirectUri = `${origin}/auth/callback`;
-    const oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(
-      GOOGLE_CLIENT_ID
-    )}&redirect_uri=${encodeURIComponent(
-      redirectUri
-    )}&response_type=token%20id_token&scope=openid%20email%20profile&nonce=${Date.now()}`;
-    window.location.href = oauthUrl;
+    // Direct Google OAuth fallback
+    if (typeof window !== 'undefined') {
+      const origin = window.location.origin;
+      const redirectUri = `${origin}/auth/callback`;
+      const oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(
+        GOOGLE_CLIENT_ID
+      )}&redirect_uri=${encodeURIComponent(
+        redirectUri
+      )}&response_type=token%20id_token&scope=openid%20email%20profile&nonce=${Date.now()}`;
+      window.location.href = oauthUrl;
+    }
 
     return {};
-  }, [handleGoogleCredential]);
+  }, []);
 
   const signOut = useCallback(async () => {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        await supabase.auth.signOut();
+      } catch {}
+    }
+
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
     } catch {}
@@ -252,6 +296,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const resetPassword = useCallback(async (email: string): Promise<{ error?: string }> => {
+    const supabase = getSupabaseClient();
+
+    if (supabase) {
+      try {
+        const origin =
+          typeof window !== 'undefined'
+            ? window.location.origin
+            : process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${origin}/auth/callback?type=recovery`,
+        });
+        if (error) return { error: error.message };
+        return {};
+      } catch (err: unknown) {
+        return { error: err instanceof Error ? err.message : 'Supabase password reset failed.' };
+      }
+    }
+
+    // Standalone fallback
     try {
       const res = await fetch('/api/auth/reset-password', {
         method: 'POST',
@@ -272,13 +336,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     () => ({
       user,
       loading,
+      isSupabaseAuth,
       signInWithEmail,
       signUpWithEmail,
       signInWithGoogle,
       signOut,
       resetPassword,
     }),
-    [user, loading, signInWithEmail, signUpWithEmail, signInWithGoogle, signOut, resetPassword]
+    [user, loading, isSupabaseAuth, signInWithEmail, signUpWithEmail, signInWithGoogle, signOut, resetPassword]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

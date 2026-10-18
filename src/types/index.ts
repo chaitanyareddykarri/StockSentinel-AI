@@ -11,6 +11,7 @@ export type VerificationOutcome =
 
 export interface Store {
   id: string;
+  user_id?: string;
   code: string;
   name: string;
   location: string;
@@ -21,6 +22,7 @@ export interface Store {
 
 export interface Product {
   id: string;
+  user_id?: string;
   sku: string;
   name: string;
   category: string;
@@ -32,6 +34,7 @@ export interface Product {
 
 export interface DailySale {
   id: string;
+  user_id?: string;
   store_id: string;
   product_id: string;
   sku: string;
@@ -44,6 +47,7 @@ export interface DailySale {
 
 export interface InventorySnapshot {
   id: string;
+  user_id?: string;
   store_id: string;
   product_id: string;
   sku: string;
@@ -54,6 +58,7 @@ export interface InventorySnapshot {
 
 export interface Promotion {
   id: string;
+  user_id?: string;
   store_id: string;
   product_id: string;
   sku: string;
@@ -61,6 +66,7 @@ export interface Promotion {
   end_date: string;
   discount_pct: number;
   promo_type: 'FEATURE' | 'DISCOUNT' | 'ENDCAP';
+  created_at?: string;
 }
 
 export interface DetectionConfig {
@@ -84,6 +90,7 @@ export interface AlertSignals {
 
 export interface Alert {
   id: string;
+  user_id?: string;
   run_id: string;
   store_id: string;
   store_name: string;
@@ -115,6 +122,7 @@ export interface Alert {
 
 export interface AuditLogEntry {
   id: string;
+  user_id?: string;
   alert_id: string;
   previous_status: AlertStatus;
   new_status: AlertStatus;
@@ -127,6 +135,7 @@ export interface AuditLogEntry {
 
 export interface DetectionRun {
   id: string;
+  user_id?: string;
   run_date: string;
   store_id: string; // or 'ALL'
   total_skus_analyzed: number;
@@ -136,6 +145,17 @@ export interface DetectionRun {
   parameters: DetectionConfig;
   alerts?: Alert[];
   is_demo?: boolean;
+  created_at: string;
+}
+
+export interface ImportJob {
+  id: string;
+  user_id: string;
+  entity_type: 'stores' | 'products' | 'daily_sales' | 'inventory_snapshots' | 'promotions';
+  filename: string;
+  records_count: number;
+  status: 'PENDING' | 'COMPLETED' | 'FAILED';
+  errors?: string[];
   created_at: string;
 }
 
