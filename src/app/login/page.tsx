@@ -214,6 +214,23 @@ function LoginForm() {
           </button>
 
 
+          {/* Quick Credential Helper */}
+          <div className="p-2.5 rounded-xl bg-slate-900/80 border border-white/5 text-[11px] text-slate-400 flex items-center justify-between">
+            <span>
+              Manager: <code className="text-emerald-400">manager@store101.com</code>
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setEmail('manager@store101.com');
+                setPassword('Sentinel2026!');
+              }}
+              className="text-[10px] font-semibold text-emerald-400 hover:text-emerald-300 underline cursor-pointer"
+            >
+              Autofill
+            </button>
+          </div>
+
           {/* Footer Note */}
           <div className="pt-2 text-center text-xs text-slate-400 border-t border-white/5">
             Don&apos;t have an account?{' '}

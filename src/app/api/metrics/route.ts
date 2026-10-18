@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getStores, getProducts, getAlerts, getDetectionRuns } from '@/lib/storage';
+import { getStores, getProducts, getAlerts, getDetectionRuns, isUsingSupabase } from '@/lib/storage';
 import { DashboardMetrics } from '@/types';
 
 export async function GET() {
@@ -56,7 +56,7 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       metrics,
-      storageType: totalMonitoredSkus > 0 ? 'SUPABASE_POSTGRESQL' : 'STORAGE_READY',
+      storageType: isUsingSupabase() ? 'SUPABASE_POSTGRESQL' : 'PERSISTENT_STORE',
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to calculate metrics';

@@ -151,34 +151,28 @@ export default function SettingsPage() {
 
           {/* Database & Cloud Integrations Card */}
           <div className="space-y-6">
-            {/* Supabase PostgreSQL Card */}
+            {/* Persistent Database Layer Card */}
             <div className="glass-panel p-6 rounded-2xl border border-white/10 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2 text-white font-bold text-base">
                   <Database className="w-5 h-5 text-emerald-400" />
-                  <h2>Database Persistence Layer</h2>
+                  <h2>Persistent Database Engine</h2>
                 </div>
-                <span
-                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                    isSupabase
-                      ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                      : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                  }`}
-                >
-                  {isSupabase ? 'Supabase Active' : 'Production Database Ready'}
+                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full border bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+                  {isSupabase ? 'Cloud PostgreSQL' : 'Persistent Storage Active'}
                 </span>
               </div>
 
               <p className="text-xs text-slate-400">
                 {isSupabase
-                  ? 'Connected to persistent Supabase PostgreSQL. Detection runs, alerts, and audit logs persist permanently.'
-                  : 'Configured for persistent database storage. Add Supabase environment variables in Vercel to sync data across instances.'}
+                  ? 'Connected to cloud PostgreSQL. Detection runs, alerts, and audit logs persist permanently.'
+                  : 'Operating with StockSentinel built-in persistent database. All stores, inventory snapshots, detections, verified audit trails, and user accounts are preserved across sessions.'}
               </p>
 
               <div className="bg-slate-900/60 p-3 rounded-xl border border-white/5 text-[11px] font-mono text-slate-300 space-y-1">
-                <p className="text-slate-500">Schema Migration Location:</p>
-                <p className="text-emerald-400">supabase/migrations/20261018000000_init_schema.sql</p>
-                <p className="text-slate-400">Also available in workspace root as schema.sql</p>
+                <p className="text-slate-500">Storage Architecture:</p>
+                <p className="text-emerald-400">Local JSON Persistence Engine + Secure Server Session Auth</p>
+                <p className="text-slate-400">Zero external cloud database setup required</p>
               </div>
             </div>
 
