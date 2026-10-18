@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
+import Script from 'next/script';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 
@@ -38,6 +39,10 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} dark h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-[#0a0e17] text-slate-100 font-sans selection:bg-emerald-500/30 selection:text-emerald-200">
         <AuthProvider>{children}</AuthProvider>
+        <Script
+          src="https://accounts.google.com/gsi/client"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );

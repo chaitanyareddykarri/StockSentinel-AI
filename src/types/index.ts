@@ -182,3 +182,31 @@ export interface EvaluationResult {
   totalEvaluated: number;
   averageRankOfPhantoms: number;
 }
+
+declare global {
+  interface Window {
+    google?: {
+      accounts?: {
+        id?: {
+          initialize: (config: Record<string, unknown>) => void;
+          prompt: (notification?: (notification: unknown) => void) => void;
+          renderButton: (parent: HTMLElement, options: Record<string, unknown>) => void;
+        };
+        oauth2?: {
+          initTokenClient: (config: {
+            client_id: string;
+            scope: string;
+            callback: (response: {
+              access_token?: string;
+              error?: string;
+              error_description?: string;
+            }) => void;
+          }) => {
+            requestAccessToken: (overrideConfig?: Record<string, unknown>) => void;
+          };
+        };
+      };
+    };
+  }
+}
+

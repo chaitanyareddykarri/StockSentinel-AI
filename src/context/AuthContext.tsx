@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/db/supabaseClient';
 import { User as SupabaseUser } from '@supabase/supabase-js';
 
@@ -45,6 +46,7 @@ function mapSupabaseUser(sbUser: SupabaseUser): AppUser {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const isSupabaseAuth = isSupabaseConfigured();
 
   const [user, setUser] = useState<AppUser | null>(() => {
@@ -260,20 +262,93 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // Direct Google OAuth fallback
-    if (typeof window !== 'undefined') {
-      const origin = window.location.origin;
-      const redirectUri = `${origin}/auth/callback`;
-      const oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(
-        GOOGLE_CLIENT_ID
-      )}&redirect_uri=${encodeURIComponent(
-        redirectUri
-      )}&response_type=token%20id_token&scope=openid%20email%20profile&nonce=${Date.now()}`;
-      window.location.href = oauthUrl;
+    if (typeof window === 'undefined') return {};
+
+    // 1. Google Identity Services Popup (no redirect_uri needed, eliminates redirect_uri_mismatch)
+    if (window.google?.accounts?.oauth2) {
+      return new Promise<{ error?: string }>((resolve) => {
+        try {
+          const tokenClient = window.google!.accounts!.oauth2!.initTokenClient({
+            client_id: GOOGLE_CLIENT_ID,
+            scope: 'email profile openid',
+            callback: async (tokenResponse) => {
+              if (tokenResponse.error) {
+                if (tokenResponse.error === 'popup_closed_by_user') {
+                  resolve({});
+                  return;
+                }
+                resolve({ error: tokenResponse.error_description || tokenResponse.error });
+                return;
+              }
+
+              if (tokenResponse.access_token) {
+                try {
+                  const gRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                    headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+                  });
+                  const profile = await gRes.json();
+                  if (!profile.email) {
+                    resolve({ error: 'Could not obtain email address from Google profile.' });
+                    return;
+                  }
+
+                  const res = await fetch('/api/auth/google', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      email: profile.email,
+                      name: profile.name,
+                      picture: profile.picture,
+                      sub: profile.sub,
+                    }),
+                  });
+
+                  const data = await res.json();
+                  if (data.user) {
+                    localStorage.setItem('stocksentinel_user_profile', JSON.stringify(data.user));
+                    setUser(data.user);
+                    router.push('/dashboard');
+                    resolve({});
+                  } else {
+                    resolve({ error: data.error || 'Failed to authenticate Google user.' });
+                  }
+                } catch (err: unknown) {
+                  resolve({
+                    error: err instanceof Error ? err.message : 'Google authentication processing failed.',
+                  });
+                }
+              }
+            },
+          });
+
+          tokenClient.requestAccessToken({ prompt: 'select_account' });
+        } catch {
+          // Fallback to standard redirect
+          const origin = window.location.origin;
+          const redirectUri = `${origin}/auth/callback`;
+          const oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(
+            GOOGLE_CLIENT_ID
+          )}&redirect_uri=${encodeURIComponent(
+            redirectUri
+          )}&response_type=token%20id_token&scope=openid%20email%20profile&nonce=${Date.now()}`;
+          window.location.href = oauthUrl;
+          resolve({});
+        }
+      });
     }
 
+    // 2. Direct Google OAuth fallback via redirect
+    const origin = window.location.origin;
+    const redirectUri = `${origin}/auth/callback`;
+    const oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(
+      GOOGLE_CLIENT_ID
+    )}&redirect_uri=${encodeURIComponent(
+      redirectUri
+    )}&response_type=token%20id_token&scope=openid%20email%20profile&nonce=${Date.now()}`;
+    window.location.href = oauthUrl;
+
     return {};
-  }, []);
+  }, [router]);
 
   const signOut = useCallback(async () => {
     const supabase = getSupabaseClient();

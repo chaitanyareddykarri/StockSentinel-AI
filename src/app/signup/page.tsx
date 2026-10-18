@@ -16,6 +16,10 @@ import {
   RefreshCw,
   AlertCircle,
   CheckCircle2,
+  HelpCircle,
+  Copy,
+  Check,
+  ExternalLink,
 } from 'lucide-react';
 
 export default function SignupPage() {
@@ -29,6 +33,8 @@ export default function SignupPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [showOAuthGuide, setShowOAuthGuide] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -233,6 +239,75 @@ export default function SignupPage() {
             <span>{googleLoading ? 'Connecting Google...' : 'Sign up with Google'}</span>
           </button>
 
+          {/* Quick OAuth Setup Helper for Developers */}
+          <div className="text-center">
+            <button
+              type="button"
+              onClick={() => setShowOAuthGuide(!showOAuthGuide)}
+              className="text-[11px] text-slate-500 hover:text-slate-300 inline-flex items-center space-x-1 cursor-pointer transition-colors"
+            >
+              <HelpCircle className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Fix &quot;redirect_uri_mismatch&quot; in Google Console</span>
+            </button>
+          </div>
+
+          {showOAuthGuide && (
+            <div className="p-3.5 rounded-xl bg-slate-950/80 border border-indigo-500/30 text-xs text-slate-300 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-indigo-300">Google Cloud Console Settings</span>
+                <a
+                  href="https://console.cloud.google.com/apis/credentials"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[11px] text-indigo-400 hover:underline inline-flex items-center space-x-1"
+                >
+                  <span>Open Console</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                In Google Cloud Console under your OAuth 2.0 Client ID, make sure you register both:
+              </p>
+
+              <div className="space-y-1">
+                <span className="text-[10px] uppercase font-semibold text-slate-400">1. Authorized JavaScript origins:</span>
+                <div className="flex items-center justify-between bg-slate-900 px-2.5 py-1.5 rounded border border-white/5 font-mono text-[11px]">
+                  <span className="truncate">{typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+                      navigator.clipboard.writeText(origin);
+                      setCopiedField('origin');
+                      setTimeout(() => setCopiedField(null), 2000);
+                    }}
+                    className="text-slate-400 hover:text-white shrink-0 ml-2 cursor-pointer"
+                  >
+                    {copiedField === 'origin' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <span className="text-[10px] uppercase font-semibold text-slate-400">2. Authorized redirect URIs:</span>
+                <div className="flex items-center justify-between bg-slate-900 px-2.5 py-1.5 rounded border border-white/5 font-mono text-[11px]">
+                  <span className="truncate">{typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'http://localhost:3000/auth/callback'}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const uri = typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'http://localhost:3000/auth/callback';
+                      navigator.clipboard.writeText(uri);
+                      setCopiedField('uri');
+                      setTimeout(() => setCopiedField(null), 2000);
+                    }}
+                    className="text-slate-400 hover:text-white shrink-0 ml-2 cursor-pointer"
+                  >
+                    {copiedField === 'uri' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="pt-2 text-center text-xs text-slate-400 border-t border-white/5">
             Already have an account?{' '}
