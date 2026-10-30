@@ -33,7 +33,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     if (!loading) return;
     const timer = setTimeout(() => {
       setSessionStalled(true);
-    }, 5000);
+    }, 1500);
     return () => clearTimeout(timer);
   }, [loading]);
 

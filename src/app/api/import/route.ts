@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { importCsvRecords, getImportCatalogContext, isValidUuid } from '@/lib/storage';
 import { getAuthenticatedUser } from '@/lib/auth/serverAuth';
 
-type ValidEntity = 'stores' | 'products' | 'daily_sales' | 'inventory_snapshots' | 'promotions';
+type ValidEntity = 'stores' | 'products' | 'daily_sales' | 'inventory_snapshots' | 'promotions' | 'combined_sales_inventory';
 
 export async function POST(request: Request) {
   try {
@@ -38,6 +38,7 @@ export async function POST(request: Request) {
       'daily_sales',
       'inventory_snapshots',
       'promotions',
+      'combined_sales_inventory',
     ];
 
     if (!validEntities.includes(entityType)) {
@@ -59,17 +60,19 @@ export async function POST(request: Request) {
 
     const rowErrors: string[] = [];
     const validRows: Record<string, unknown>[] = [];
+    const validInventoryRows: Record<string, unknown>[] = [];
     const userRole = auth.user.accessState;
     const assignedStore = auth.user.assignedStoreId;
     const accessibleStores = auth.user.accessibleStoreIds || [];
 
     // Pre-load catalog context to resolve store UUIDs and product UUIDs for telemetry entities
-    const isTelemetryEntity = ['daily_sales', 'inventory_snapshots', 'promotions'].includes(entityType);
+    const isTelemetryEntity = ['daily_sales', 'inventory_snapshots', 'promotions', 'combined_sales_inventory'].includes(entityType);
     const catalogContext = isTelemetryEntity
       ? await getImportCatalogContext(
           auth.user.id,
           auth.user.companyId,
-          auth.user.accessState === 'PLATFORM_ADMIN' ? ['*'] : undefined
+          auth.user.accessState === 'PLATFORM_ADMIN' ? ['*'] : undefined,
+          auth.user.authMode
         )
       : null;
 
@@ -149,6 +152,57 @@ export async function POST(request: Request) {
 
         if (!matchingProduct) {
           rowErrors.push(`Row ${rowNum}: Product SKU '${rowSku}' was not found in product catalog. Please import products first.`);
+          continue;
+        }
+
+        if (entityType === 'combined_sales_inventory') {
+          const rawDate = row.date || row.sales_date || row.business_date;
+          if (!rawDate) {
+            rowErrors.push(`Row ${rowNum}: Missing date.`);
+            continue;
+          }
+          const unitsSoldRaw = row.units_sold !== undefined ? row.units_sold : row.quantity_sold;
+          const unitsSold = parseInt(String(unitsSoldRaw ?? 0), 10);
+          if (isNaN(unitsSold) || unitsSold < 0) {
+            rowErrors.push(`Row ${rowNum}: Invalid units_sold '${String(unitsSoldRaw)}'. Must be non-negative integer.`);
+            continue;
+          }
+
+          const onHandRaw = row.on_hand_stock !== undefined ? row.on_hand_stock : row.on_hand_eod;
+          const onHand = parseInt(String(onHandRaw ?? 0), 10);
+          if (isNaN(onHand) || onHand < 0) {
+            rowErrors.push(`Row ${rowNum}: Invalid on_hand_stock / on_hand_eod '${String(onHandRaw)}'. Must be non-negative integer.`);
+            continue;
+          }
+
+          const dateStr = String(rawDate).trim();
+          const cleanDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+
+          // 1. Sales row
+          validRows.push({
+            id: rowId,
+            ...(auth.user.companyId && isValidUuid(auth.user.companyId) ? { company_id: auth.user.companyId } : {}),
+            store_id: matchingStore.id,
+            product_id: matchingProduct.id,
+            sku: matchingProduct.sku,
+            date: cleanDate,
+            units_sold: unitsSold,
+            revenue: Number(row.revenue) || (unitsSold * (matchingProduct.unit_price || 0.0)),
+            day_of_week: new Date(cleanDate).getDay(),
+            created_at: new Date().toISOString(),
+          });
+
+          // 2. Inventory row
+          validInventoryRows.push({
+            id: crypto.randomUUID(),
+            ...(auth.user.companyId && isValidUuid(auth.user.companyId) ? { company_id: auth.user.companyId } : {}),
+            store_id: matchingStore.id,
+            product_id: matchingProduct.id,
+            sku: matchingProduct.sku,
+            date: cleanDate,
+            on_hand_stock: onHand,
+            created_at: new Date().toISOString(),
+          });
           continue;
         }
 
@@ -290,13 +344,62 @@ export async function POST(request: Request) {
       );
     }
 
+    if (entityType === 'combined_sales_inventory') {
+      const salesResult = await importCsvRecords(
+        'daily_sales',
+        validRows,
+        auth.user.id,
+        'combined_sales.csv',
+        auth.user.accessState === 'PLATFORM_ADMIN' ? ['*'] : auth.user.accessibleStoreIds,
+        auth.user.companyId,
+        auth.user.authMode
+      );
+
+      const inventoryResult = await importCsvRecords(
+        'inventory_snapshots',
+        validInventoryRows,
+        auth.user.id,
+        'combined_inventory.csv',
+        auth.user.accessState === 'PLATFORM_ADMIN' ? ['*'] : auth.user.accessibleStoreIds,
+        auth.user.companyId,
+        auth.user.authMode
+      );
+
+      const combinedErrors = [...salesResult.errors, ...inventoryResult.errors];
+      if (combinedErrors.length > 0 && salesResult.inserted === 0 && inventoryResult.inserted === 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Combined import failed: ${combinedErrors.join(', ')}`,
+            storageErrors: combinedErrors,
+            totalRows: records.length,
+            inserted: 0,
+          },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        entityType: 'combined_sales_inventory',
+        totalRows: records.length,
+        inserted: salesResult.inserted,
+        inventorySnapshotsInserted: inventoryResult.inserted,
+        skipped: 0,
+        rowErrors: [],
+        storageErrors: combinedErrors,
+        message: `Successfully ingested ${salesResult.inserted} sales transactions and ${inventoryResult.inserted} inventory snapshot balances into persistent storage! Ready for Phantom Stockout detection.`,
+      });
+    }
+
     const { inserted, errors } = await importCsvRecords(
       entityType as ValidEntity,
       validRows,
       auth.user.id,
       'import.csv',
       auth.user.accessState === 'PLATFORM_ADMIN' ? ['*'] : auth.user.accessibleStoreIds,
-      auth.user.companyId
+      auth.user.companyId,
+      auth.user.authMode
     );
 
     if (errors.length > 0 && inserted === 0) {

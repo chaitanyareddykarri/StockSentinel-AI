@@ -35,6 +35,9 @@ export function resolveDemoStoreId(storeRef?: string | null, storeList?: Store[]
   if (ref === 'store-001' || ref === 'store-002' || ref === 'store-003') {
     return ref;
   }
+  if (ref === 'f6aa88e5-0dba-4285-bc00-9250a43ceb85') {
+    return 'store-001';
+  }
 
   // 2. Onboarding store ID pattern: store_<slug>_<index> (e.g. store_retailops_1, store_mycompany_2)
   if (/_1$|_1_/.test(ref)) return 'store-001';

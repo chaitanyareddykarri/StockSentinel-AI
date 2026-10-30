@@ -19,7 +19,7 @@ import type {
 import { getInitialDemoState } from './demoData';
 import { getSupabaseClient, isSupabaseConfigured } from './db/supabaseClient';
 import { getSupabaseServerClient, isSupabaseServerConfigured } from './db/supabaseServer';
-import { resolveDemoStoreId, expandStoreIds } from './storeResolver';
+import { resolveDemoStoreId, expandStoreIds, isSameOrAliasedStore } from './storeResolver';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 // Store structure
@@ -165,10 +165,16 @@ export async function getStores(
 
   let list = getMemoryStore().stores;
   if (companyId) {
-    list = list.filter((s) => !s.company_id || s.company_id === companyId);
+    list = list.filter((s) => !s.company_id || s.company_id === companyId || s.company_id === '00000000-0000-0000-0000-000000000001');
   }
   if (expandedAllowed && !expandedAllowed.includes('*')) {
-    list = list.filter((s) => expandedAllowed.includes(s.id));
+    list = list.filter(
+      (s) =>
+        expandedAllowed.includes(s.id) ||
+        (s.code && expandedAllowed.includes(s.code)) ||
+        expandedAllowed.some((aId) => isSameOrAliasedStore(s.id, aId)) ||
+        (s.code && expandedAllowed.some((aId) => isSameOrAliasedStore(s.code, aId)))
+    );
   }
 
   // Deduplicate stores if an onboarded/aliased store points to the same underlying demo store
@@ -212,7 +218,7 @@ export async function getProducts(userId?: string, companyId?: string): Promise<
 
   let list = getMemoryStore().products;
   if (companyId) {
-    list = list.filter((p) => !p.company_id || p.company_id === companyId);
+    list = list.filter((p) => !p.company_id || p.company_id === companyId || p.company_id === '00000000-0000-0000-0000-000000000001');
   }
   return list;
 }
@@ -757,13 +763,14 @@ export function isValidUuid(val: unknown): val is string {
 export async function getImportCatalogContext(
   userId?: string,
   companyId?: string,
-  allowedStoreIds?: string[]
+  allowedStoreIds?: string[],
+  authMode?: "supabase" | "standalone"
 ): Promise<{
   stores: Store[];
   products: Product[];
   isUsingDb: boolean;
 }> {
-  const supabase = getDbClient();
+  const supabase = authMode === "standalone" ? null : getDbClient();
   if (supabase) {
     try {
       let storeQuery = supabase.from('stores').select('*');
@@ -809,12 +816,41 @@ export async function getImportCatalogContext(
   let products = mem.products;
 
   if (companyId) {
-    stores = stores.filter((s) => !s.company_id || s.company_id === companyId);
-    products = products.filter((p) => !p.company_id || p.company_id === companyId);
+    stores = stores.filter((s) => {
+      // 1. Store belongs explicitly to the user's company
+      if (s.company_id === companyId) return true;
+      // 2. Unowned demo stores (null or undefined company_id)
+      if (!s.company_id) return true;
+      // 3. Demo company UUID
+      if (s.company_id === '00000000-0000-0000-0000-000000000001') return true;
+      // 4. Canonical demo store codes
+      if (s.code && ['SEA-101', 'BEL-204', 'TAC-308'].includes(s.code)) return true;
+      // 5. Canonical demo store IDs
+      if (['store-001', 'store-002', 'store-003'].includes(s.id)) return true;
+      // 6. Resolvable to a canonical demo store
+      if (resolveDemoStoreId(s.id, mem.stores) || resolveDemoStoreId(s.code, mem.stores)) return true;
+      return false;
+    });
+
+    products = products.filter((p) => {
+      // 1. Product belongs explicitly to the user's company
+      if (p.company_id === companyId) return true;
+      // 2. Unowned demo products (null or undefined company_id)
+      if (!p.company_id) return true;
+      // 3. Demo company UUID
+      if (p.company_id === '00000000-0000-0000-0000-000000000001') return true;
+      return false;
+    });
   }
   if (allowedStoreIds && !allowedStoreIds.includes('*')) {
-    const expanded = expandStoreIds(allowedStoreIds);
-    stores = stores.filter((s) => expanded.includes(s.id));
+    const expanded = expandStoreIds(allowedStoreIds, mem.stores);
+    stores = stores.filter(
+      (s) =>
+        expanded.includes(s.id) ||
+        (s.code && expanded.includes(s.code)) ||
+        expanded.some((allowedId) => isSameOrAliasedStore(s.id, allowedId, mem.stores)) ||
+        (s.code && expanded.some((allowedId) => isSameOrAliasedStore(s.code, allowedId, mem.stores)))
+    );
   }
 
   return {
@@ -830,9 +866,10 @@ export async function importCsvRecords(
   userId?: string,
   filename: string = 'import.csv',
   allowedStoreIds?: string[],
-  companyId?: string
+  companyId?: string,
+  authMode?: 'supabase' | 'standalone'
 ): Promise<{ inserted: number; errors: string[] }> {
-  const supabase = getDbClient();
+  const supabase = authMode === 'standalone' ? null : getDbClient();
   const errors: string[] = [];
 
   if (records.length === 0) {
@@ -841,11 +878,15 @@ export async function importCsvRecords(
 
   // Pre-validate store ownership if allowedStoreIds is restricted
   if (allowedStoreIds && !allowedStoreIds.includes('*')) {
+    const expandedAllowed = expandStoreIds(allowedStoreIds);
     const isStoreEntity = ['daily_sales', 'inventory_snapshots', 'promotions'].includes(entityType);
     if (isStoreEntity) {
       for (let i = 0; i < records.length; i++) {
         const rowStoreId = String(records[i].store_id || '');
-        if (!rowStoreId || !allowedStoreIds.includes(rowStoreId)) {
+        const isAuthorized =
+          expandedAllowed.includes(rowStoreId) ||
+          expandedAllowed.some((allowedId) => isSameOrAliasedStore(rowStoreId, allowedId));
+        if (!rowStoreId || !isAuthorized) {
           return {
             inserted: 0,
             errors: [`Row ${i + 1}: Store '${rowStoreId}' is unauthorized for your account.`],

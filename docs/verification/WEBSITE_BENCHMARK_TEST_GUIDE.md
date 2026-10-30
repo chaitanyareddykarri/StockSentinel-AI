@@ -357,3 +357,4 @@ Follow this 5-minute walkthrough during your presentation to hackathon judges:
 - [ ] **Step 6: Show Validated Submission Package**:
   - Run `py scripts/verify_submission.py`.
   - Prove that `submission/R1_predictions.csv` passes all 9 competition constraints across all 25 stores and 28 test dates.
+

@@ -1,9 +1,17 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useId } from 'react';
 import Papa from 'papaparse';
+import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
 import { useAuth } from '@/context/AuthContext';
+import {
+  DatasetType,
+  CANONICAL_SCHEMAS,
+  suggestColumnMapping,
+  detectDatasetType,
+  sanitizeCsvCell,
+} from '@/lib/universalImport';
 import {
   Upload,
   Download,
@@ -13,187 +21,308 @@ import {
   RefreshCw,
   Database,
   ArrowRight,
+  Sparkles,
+  Layers,
+  Settings2,
+  FileSpreadsheet,
+  HelpCircle,
+  PlayCircle,
 } from 'lucide-react';
 
-type EntityType = 'stores' | 'products' | 'daily_sales' | 'inventory_snapshots' | 'promotions';
-
-interface TemplateDef {
+interface FileInspectMeta {
   name: string;
-  filename: string;
+  size: number;
+  delimiter: string;
+  rowCount: number;
   headers: string[];
-  sampleData: Record<string, unknown>[];
-  description: string;
 }
 
-const TEMPLATES: Record<EntityType, TemplateDef> = {
-  stores: {
-    name: 'Stores',
-    filename: 'template_stores.csv',
-    headers: ['code', 'name', 'location', 'store_type', 'total_skus'],
-    sampleData: [
-      { code: 'SEA-101', name: 'Downtown Supercenter #101', location: 'Seattle, WA', store_type: 'Supercenter', total_skus: 30 },
-      { code: 'BEL-204', name: 'Metro Express Market #204', location: 'Bellevue, WA', store_type: 'Express Market', total_skus: 30 },
-      { code: 'TAC-308', name: 'Suburban Mall Superstore #308', location: 'Tacoma, WA', store_type: 'Superstore', total_skus: 30 },
-    ],
-    description: 'Store locations and retail store metadata.',
-  },
-  products: {
-    name: 'Products & SKUs',
-    filename: 'template_products.csv',
-    headers: ['sku', 'name', 'category', 'unit_price', 'avg_daily_demand', 'min_stock_threshold'],
-    sampleData: [
-      { sku: 'SKU-101', name: 'Organic Whole Milk 1 Gal', category: 'Dairy', unit_price: 4.99, avg_daily_demand: 4.8, min_stock_threshold: 8 },
-      { sku: 'SKU-104', name: 'Electrolyte Citrus Rush 16oz', category: 'Beverages', unit_price: 2.99, avg_daily_demand: 5.5, min_stock_threshold: 12 },
-      { sku: 'SKU-114', name: 'Matcha Green Tea Powder 50g', category: 'Beverages', unit_price: 14.99, avg_daily_demand: 0.35, min_stock_threshold: 2 },
-    ],
-    description: 'Catalog master data including baseline expected sales velocity.',
-  },
-  daily_sales: {
-    name: 'Daily Sales',
-    filename: 'template_daily_sales.csv',
-    headers: ['store_id', 'sku', 'date', 'units_sold', 'revenue'],
-    sampleData: [
-      { store_id: 'SEA-101', sku: 'SKU-101', date: '2026-10-15', units_sold: 5, revenue: 24.95 },
-      { store_id: 'SEA-101', sku: 'SKU-104', date: '2026-10-15', units_sold: 0, revenue: 0.00 },
-      { store_id: 'BEL-204', sku: 'SKU-104', date: '2026-10-15', units_sold: 6, revenue: 17.94 },
-    ],
-    description: 'Daily transaction sales records per SKU and store.',
-  },
-  inventory_snapshots: {
-    name: 'Inventory Snapshots',
-    filename: 'template_inventory_snapshots.csv',
-    headers: ['store_id', 'sku', 'date', 'on_hand_stock'],
-    sampleData: [
-      { store_id: 'SEA-101', sku: 'SKU-101', date: '2026-10-15', on_hand_stock: 18 },
-      { store_id: 'SEA-101', sku: 'SKU-104', date: '2026-10-15', on_hand_stock: 26 },
-      { store_id: 'BEL-204', sku: 'SKU-104', date: '2026-10-15', on_hand_stock: 14 },
-    ],
-    description: 'Recorded system on-hand inventory levels per SKU and store.',
-  },
-  promotions: {
-    name: 'Promotions',
-    filename: 'template_promotions.csv',
-    headers: ['store_id', 'sku', 'start_date', 'end_date', 'discount_pct', 'promo_type'],
-    sampleData: [
-      { store_id: 'SEA-101', sku: 'SKU-104', start_date: '2026-10-10', end_date: '2026-10-20', discount_pct: 20, promo_type: 'FEATURE' },
-      { store_id: 'BEL-204', sku: 'SKU-101', start_date: '2026-10-12', end_date: '2026-10-22', discount_pct: 15, promo_type: 'ENDCAP' },
-    ],
-    description: 'Active store circular, feature, and promotional discounts.',
-  },
-};
-
-export default function ImportPage() {
+export default function UniversalImportPage() {
+  const fileInputId = useId();
   const { user } = useAuth();
   const isStoreManager = user?.accessState === 'STORE_MANAGER';
-  const [selectedEntity, setSelectedEntity] = useState<EntityType>('daily_sales');
-  const [parsedData, setParsedData] = useState<Record<string, unknown>[]>([]);
+
+  // 1. Current Step State: 1: Upload, 2: Map & Preview, 3: Completed
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
+
+  // Selected or Auto-Detected Dataset Type
+  const [selectedDataset, setSelectedDataset] = useState<DatasetType>('combined_sales_inventory');
+  const [detectionNotice, setDetectionNotice] = useState<string | null>(null);
+
+  // Raw Parsed Data & Inspector Metadata
+  const [fileMeta, setFileMeta] = useState<FileInspectMeta | null>(null);
+  const [rawRows, setRawRows] = useState<Record<string, unknown>[]>([]);
+
+  // Column Mappings: CanonicalKey -> CSV Header
+  const [columnMappings, setColumnMappings] = useState<Record<string, string>>({});
+  const [mappingConfidence, setMappingConfidence] = useState<Record<string, 'HIGH' | 'MEDIUM' | 'NONE'>>({});
+
+  // Validation
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
-  const [fileDetails, setFileDetails] = useState<{ name: string; size: number } | null>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
-  const [importResult, setImportResult] = useState<{ inserted: number; errors: string[] } | null>(null);
+  const [importResult, setImportResult] = useState<{
+    inserted: number;
+    message?: string;
+    errors: string[];
+  } | null>(null);
 
-  const currentTemplate = TEMPLATES[selectedEntity];
+  const activeSchema = CANONICAL_SCHEMAS[selectedDataset];
 
-  // CSV Template Downloader
-  const downloadTemplate = () => {
-    const csvContent = Papa.unparse(currentTemplate.sampleData, {
-      columns: currentTemplate.headers,
+  // CSV Template Downloader with canonical schema sample
+  const downloadTemplate = (dataset: DatasetType) => {
+    const schema = CANONICAL_SCHEMAS[dataset];
+    const sampleHeaders = schema.fields.map((f) => f.key);
+    const sampleRow: Record<string, string | number> = {};
+    schema.fields.forEach((f) => {
+      if (f.type === 'number') sampleRow[f.key] = 10;
+      else if (f.type === 'date') sampleRow[f.key] = '2026-10-30';
+      else if (f.type === 'boolean') sampleRow[f.key] = 0;
+      else if (f.key === 'store_id') sampleRow[f.key] = 'STR-BFPW';
+      else if (f.key === 'sku') sampleRow[f.key] = 'SKU-047AZA';
+      else sampleRow[f.key] = 'Sample Value';
     });
+
+    const csvContent = Papa.unparse([sampleRow], { columns: sampleHeaders });
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', currentTemplate.filename);
+    link.setAttribute('download', `template_${dataset}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  // CSV File Handler
+  // Step 1 -> Step 2: Handle File Selection & Auto-Inspection
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setFileDetails({ name: file.name, size: file.size });
+    // Safety: File size limit 50MB
+    const MAX_SIZE = 50 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      setValidationErrors([`File size exceeds safe web limit of 50MB (${(file.size / (1024 * 1024)).toFixed(1)}MB).`]);
+      return;
+    }
+
     setImportResult(null);
+    setValidationErrors([]);
 
     Papa.parse(file, {
       header: true,
-      skipEmptyLines: true,
+      skipEmptyLines: 'greedy',
+      preview: 5000, // Read up to first 5,000 rows in browser memory safely
       complete: (results) => {
         const rows = results.data as Record<string, unknown>[];
-        validateRows(rows);
+        if (!rows || rows.length === 0) {
+          setValidationErrors(['The uploaded CSV file is empty or does not contain data rows.']);
+          return;
+        }
+
+        const headers = results.meta.fields || Object.keys(rows[0] || {});
+        const delimiter = results.meta.delimiter || ',';
+
+        // 1. Auto-detect dataset type from headers
+        const { detectedType, reason } = detectDatasetType(headers);
+        setSelectedDataset(detectedType);
+        setDetectionNotice(reason);
+
+        // 2. Auto-suggest column mappings
+        const initialMappings: Record<string, string> = {};
+        const confidences: Record<string, 'HIGH' | 'MEDIUM' | 'NONE'> = {};
+        const targetSchema = CANONICAL_SCHEMAS[detectedType];
+
+        targetSchema.fields.forEach((field) => {
+          // Look through all CSV headers to find best match
+          let bestHeader = '';
+          let highestConf: 'HIGH' | 'MEDIUM' | 'NONE' = 'NONE';
+
+          for (const h of headers) {
+            const suggestion = suggestColumnMapping(h, detectedType);
+            if (suggestion.canonicalKey === field.key) {
+              if (suggestion.confidence === 'HIGH') {
+                bestHeader = h;
+                highestConf = 'HIGH';
+                break;
+              } else if (suggestion.confidence === 'MEDIUM' && highestConf === 'NONE') {
+                bestHeader = h;
+                highestConf = 'MEDIUM';
+              }
+            }
+          }
+
+          if (bestHeader) {
+            initialMappings[field.key] = bestHeader;
+            confidences[field.key] = highestConf;
+          } else {
+            initialMappings[field.key] = '';
+            confidences[field.key] = 'NONE';
+          }
+        });
+
+        setColumnMappings(initialMappings);
+        setMappingConfidence(confidences);
+        setRawRows(rows);
+        setFileMeta({
+          name: file.name,
+          size: file.size,
+          delimiter,
+          rowCount: rows.length,
+          headers,
+        });
+
+        // Run validation against initial mappings
+        runValidation(rows, detectedType, initialMappings);
+        setCurrentStep(2);
       },
       error: (err) => {
-        setValidationErrors([`File parse error: ${err.message}`]);
+        setValidationErrors([`CSV parsing error: ${err.message}`]);
       },
     });
   };
 
-  const validateRows = (rows: Record<string, unknown>[]) => {
+  // Step 2: Validate Rows with Current Mapping
+  const runValidation = (
+    rows: Record<string, unknown>[],
+    datasetType: DatasetType,
+    mappings: Record<string, string>
+  ) => {
     const errors: string[] = [];
-    const headers = Object.keys(rows[0] || {});
+    const schema = CANONICAL_SCHEMAS[datasetType];
 
-    // Check required headers
-    currentTemplate.headers.forEach((h) => {
-      if (!headers.includes(h)) {
-        errors.push(`Missing mandatory column header: "${h}"`);
+    // Check mandatory fields have assigned columns
+    schema.fields.forEach((f) => {
+      if (f.required && (!mappings[f.key] || mappings[f.key] === '')) {
+        errors.push(`Required field "${f.label}" (${f.key}) is not mapped to any CSV column.`);
       }
     });
 
-    // Row-by-row validation
-    rows.forEach((row, idx) => {
+    if (errors.length > 0) {
+      setValidationErrors(errors);
+      return;
+    }
+
+    // Row-level sanity checks on the first 50 sample rows
+    const sample = rows.slice(0, 50);
+    sample.forEach((row, idx) => {
       const rowNum = idx + 1;
-      if (selectedEntity === 'stores') {
-        if (!row.code) errors.push(`Row ${rowNum}: store code cannot be empty.`);
-      } else if (selectedEntity === 'products') {
-        if (!row.sku) errors.push(`Row ${rowNum}: SKU cannot be empty.`);
-      } else if (selectedEntity === 'daily_sales') {
-        if (!row.store_id || !row.sku || !row.date) {
-          errors.push(`Row ${rowNum}: store_id, sku, and date are required.`);
+      schema.fields.forEach((f) => {
+        const mappedCol = mappings[f.key];
+        if (!mappedCol) return;
+        const val = row[mappedCol];
+
+        if (f.required && (val === undefined || val === null || String(val).trim() === '')) {
+          if (errors.length < 10) {
+            errors.push(`Row ${rowNum}: Required field "${f.label}" is missing/empty.`);
+          }
         }
-        const unitsSold = parseInt(String(row.units_sold), 10);
-        if (isNaN(unitsSold) || unitsSold < 0) {
-          errors.push(`Row ${rowNum}: units_sold must be a non-negative integer.`);
+
+        if (f.type === 'number' && val !== undefined && val !== null && String(val).trim() !== '') {
+          if (isNaN(Number(val))) {
+            if (errors.length < 10) {
+              errors.push(`Row ${rowNum}: Value "${val}" in column "${mappedCol}" is not a valid number.`);
+            }
+          }
         }
-      } else if (selectedEntity === 'inventory_snapshots') {
-        if (!row.store_id || !row.sku || !row.date) {
-          errors.push(`Row ${rowNum}: store_id, sku, and date are required.`);
+
+        if (f.type === 'date' && val !== undefined && val !== null && String(val).trim() !== '') {
+          const parsed = Date.parse(String(val));
+          if (isNaN(parsed)) {
+            if (errors.length < 10) {
+              errors.push(`Row ${rowNum}: Value "${val}" in column "${mappedCol}" is not a recognizable date.`);
+            }
+          }
         }
-        const onHand = parseInt(String(row.on_hand_stock), 10);
-        if (isNaN(onHand) || onHand < 0) {
-          errors.push(`Row ${rowNum}: on_hand_stock must be a non-negative integer.`);
-        }
-      }
+      });
     });
 
     setValidationErrors(errors);
-    setParsedData(rows);
   };
 
+  // Change mapping manually
+  const handleMappingChange = (canonicalKey: string, csvHeader: string) => {
+    const updated = { ...columnMappings, [canonicalKey]: csvHeader };
+    setColumnMappings(updated);
+    setMappingConfidence({ ...mappingConfidence, [canonicalKey]: csvHeader ? 'HIGH' : 'NONE' });
+    runValidation(rawRows, selectedDataset, updated);
+  };
+
+  // Switch Dataset Type Manually
+  const handleDatasetTypeChange = (newType: DatasetType) => {
+    setSelectedDataset(newType);
+    if (!fileMeta) return;
+
+    // Recompute suggestions for new type
+    const newMappings: Record<string, string> = {};
+    const newConfidences: Record<string, 'HIGH' | 'MEDIUM' | 'NONE'> = {};
+    const schema = CANONICAL_SCHEMAS[newType];
+
+    schema.fields.forEach((field) => {
+      let bestHeader = '';
+      let highestConf: 'HIGH' | 'MEDIUM' | 'NONE' = 'NONE';
+      for (const h of fileMeta.headers) {
+        const suggestion = suggestColumnMapping(h, newType);
+        if (suggestion.canonicalKey === field.key) {
+          if (suggestion.confidence === 'HIGH') {
+            bestHeader = h;
+            highestConf = 'HIGH';
+            break;
+          } else if (suggestion.confidence === 'MEDIUM' && highestConf === 'NONE') {
+            bestHeader = h;
+            highestConf = 'MEDIUM';
+          }
+        }
+      }
+      newMappings[field.key] = bestHeader;
+      newConfidences[field.key] = highestConf;
+    });
+
+    setColumnMappings(newMappings);
+    setMappingConfidence(newConfidences);
+    runValidation(rawRows, newType, newMappings);
+  };
+
+  // Step 5: Execute Import
   const handleCommitImport = async () => {
-    if (parsedData.length === 0 || validationErrors.length > 0) return;
+    if (rawRows.length === 0 || validationErrors.length > 0) return;
 
     setIsUploading(true);
     setImportResult(null);
+
+    // Transform raw rows into normalized canonical rows using user mappings
+    const normalizedRecords = rawRows.map((r) => {
+      const canonicalRecord: Record<string, unknown> = {};
+      Object.entries(columnMappings).forEach(([canonicalKey, csvHeader]) => {
+        if (csvHeader && r[csvHeader] !== undefined) {
+          canonicalRecord[canonicalKey] = r[csvHeader];
+        }
+      });
+      return canonicalRecord;
+    });
 
     try {
       const res = await fetch('/api/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          entityType: selectedEntity,
-          records: parsedData,
+          entityType: selectedDataset,
+          records: normalizedRecords,
         }),
       });
 
       const data = await res.json();
-      if (data.success) {
-        setImportResult({ inserted: data.inserted, errors: [] });
-        setParsedData([]);
-        setFileDetails(null);
+      if (res.ok && data.success) {
+        setImportResult({
+          inserted: data.inserted || normalizedRecords.length,
+          message: data.message,
+          errors: [],
+        });
+        setCurrentStep(3);
       } else {
-        setImportResult({ inserted: 0, errors: data.errors || [data.error || 'Import failed.'] });
+        setImportResult({
+          inserted: 0,
+          errors: data.rowErrors || data.storageErrors || [data.error || 'Database rejected the import batch.'],
+        });
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Network error during upload.';
@@ -203,213 +332,452 @@ export default function ImportPage() {
     }
   };
 
+  // Download Downloadable Validation or Export Report
+  const downloadValidationReport = () => {
+    const reportData = validationErrors.map((err, i) => ({
+      issue_id: i + 1,
+      severity: 'ERROR',
+      description: sanitizeCsvCell(err),
+      file_source: sanitizeCsvCell(fileMeta?.name || 'unknown'),
+      timestamp: new Date().toISOString(),
+    }));
+
+    const csv = Papa.unparse(reportData);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.setAttribute('download', `validation_report_${Date.now()}.csv`);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
   return (
     <AppShell
-      title="Retail Data Ingestion & CSV Import"
-      subtitle="Import store sales, inventory, products, and promotion datasets with full schema validation and database persistence."
+      title="Universal Retail CSV Ingestion"
+      subtitle="Import any retail CSV format with smart column matching, custom field mapping, delimiter detection, and phantom stockout detection readiness."
     >
-      {/* Entity Selection Tabs */}
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-500">Select Dataset Type</h2>
-          <div className="flex flex-wrap gap-2 pt-2">
-            {(Object.keys(TEMPLATES) as EntityType[]).map((key) => {
-              const def = TEMPLATES[key];
-              const isSelected = selectedEntity === key;
-              const isRestrictedForRole = isStoreManager && (key === 'stores' || key === 'products');
-              return (
-                <button
-                  key={key}
-                  disabled={isRestrictedForRole}
-                  onClick={() => {
-                    setSelectedEntity(key);
-                    setParsedData([]);
-                    setValidationErrors([]);
-                    setFileDetails(null);
-                    setImportResult(null);
-                  }}
-                  title={isRestrictedForRole ? 'Managed exclusively by Company Managers' : undefined}
-                  className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                    isRestrictedForRole
-                      ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
-                      : isSelected
-                      ? 'bg-emerald-50 text-emerald-900 border border-emerald-300 shadow-2xs'
-                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                  }`}
-                >
-                  {def.name}
-                  {isRestrictedForRole && <span className="ml-1 text-[10px] text-slate-400 font-normal">(Company Mgr)</span>}
-                </button>
-              );
-            })}
+      <div className="space-y-6">
+        {/* Step Indicator */}
+        <div className="bg-white/95 rounded-2xl border border-slate-200/80 p-4 shadow-xs flex items-center justify-between">
+          <div className="flex items-center space-x-6 text-xs font-semibold">
+            <span
+              className={`flex items-center space-x-2 ${
+                currentStep === 1 ? 'text-emerald-800 font-bold' : 'text-slate-400'
+              }`}
+            >
+              <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center">
+                1
+              </span>
+              <span>Upload CSV</span>
+            </span>
+            <span className="text-slate-300">→</span>
+            <span
+              className={`flex items-center space-x-2 ${
+                currentStep === 2 ? 'text-emerald-800 font-bold' : 'text-slate-400'
+              }`}
+            >
+              <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center">
+                2
+              </span>
+              <span>Inspect & Map Columns</span>
+            </span>
+            <span className="text-slate-300">→</span>
+            <span
+              className={`flex items-center space-x-2 ${
+                currentStep === 3 ? 'text-emerald-800 font-bold' : 'text-slate-400'
+              }`}
+            >
+              <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center">
+                3
+              </span>
+              <span>Verification & Run Detection</span>
+            </span>
           </div>
+
+          {currentStep > 1 && (
+            <button
+              onClick={() => {
+                setCurrentStep(1);
+                setFileMeta(null);
+                setRawRows([]);
+                setValidationErrors([]);
+                setImportResult(null);
+              }}
+              className="text-xs text-slate-500 hover:text-slate-800 font-semibold cursor-pointer"
+            >
+              Start Over / New File
+            </button>
+          )}
         </div>
 
-        {/* Template & Upload Section */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
-          {/* Template Info Card */}
-          <div className="bg-white/95 rounded-2xl border border-slate-200/80 p-5 shadow-xs space-y-4 flex flex-col justify-between">
-            <div className="space-y-3">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
-                  <Database className="w-4 h-4 text-emerald-700" />
-                  <span>Schema: {currentTemplate.name}</span>
-                </h3>
-                <p className="text-xs text-slate-500 mt-1">{currentTemplate.description}</p>
+        {/* STEP 1: UPLOAD & TEMPLATES */}
+        {currentStep === 1 && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+              {/* Dropzone Card */}
+              <div className="bg-white/95 rounded-2xl border border-slate-200/80 p-6 shadow-xs md:col-span-2 flex flex-col justify-center">
+                <label
+                  htmlFor={fileInputId}
+                  className="border-2 border-dashed border-emerald-300 hover:border-emerald-500 rounded-2xl p-10 flex flex-col items-center justify-center cursor-pointer transition-colors bg-emerald-50/20 text-center"
+                >
+                  <Upload className="w-10 h-10 text-emerald-700 mb-3" />
+                  <p className="text-base font-bold text-slate-900">Drag & drop your retail CSV file here</p>
+                  <p className="text-xs text-slate-500 mt-1 max-w-md">
+                    Accepts official challenge CSVs, ERP POS transaction summaries, inventory counts, or catalog exports. Any delimiter (, ; | \t) is supported automatically.
+                  </p>
+                  <div className="mt-4 px-4 py-2 rounded-xl bg-[#064e3b] text-white text-xs font-semibold shadow-xs">
+                    Browse Local File
+                  </div>
+                  <input
+                    id={fileInputId}
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                </label>
               </div>
 
-              <div>
-                <p className="text-xs font-semibold text-slate-700 mb-1.5">Required Headers:</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {currentTemplate.headers.map((h) => (
-                    <span
-                      key={h}
-                      className="font-mono text-[11px] bg-slate-100 px-2 py-0.5 rounded text-emerald-800 border border-slate-200 font-semibold"
-                    >
-                      {h}
-                    </span>
-                  ))}
+              {/* Ready Sample Templates */}
+              <div className="bg-white/95 rounded-2xl border border-slate-200/80 p-5 shadow-xs space-y-4 flex flex-col justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+                    <span>Download Reference Templates</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Download sample CSV formats for your retail data type:
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  {(Object.keys(CANONICAL_SCHEMAS) as DatasetType[]).map((key) => {
+                    const schema = CANONICAL_SCHEMAS[key];
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => downloadTemplate(key)}
+                        className="w-full flex items-center justify-between p-2.5 rounded-xl text-xs bg-slate-50 hover:bg-emerald-50/60 border border-slate-200/80 text-left transition-colors cursor-pointer group"
+                      >
+                        <span className="font-semibold text-slate-700 group-hover:text-emerald-900">
+                          {schema.name}
+                        </span>
+                        <Download className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-700 shrink-0 ml-2" />
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
 
-            <button
-              onClick={downloadTemplate}
-              className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+            {/* Supported Dataset Types Info */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 rounded-2xl bg-emerald-50/40 border border-emerald-200 text-xs text-emerald-950 space-y-1">
+                <span className="font-bold flex items-center space-x-1.5">
+                  <Sparkles className="w-4 h-4 text-emerald-700" />
+                  <span>Combined Sales & Inventory</span>
+                </span>
+                <p className="text-slate-600 text-[11px]">
+                  Files with both daily sales and on-hand inventory automatically enable Phantom Stockout detection immediately after import.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-800 space-y-1">
+                <span className="font-bold flex items-center space-x-1.5">
+                  <Layers className="w-4 h-4 text-slate-700" />
+                  <span>Multi-File Ingestion</span>
+                </span>
+                <p className="text-slate-600 text-[11px]">
+                  You can upload Sales and Inventory in separate files. Both link automatically on store ID and SKU.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-amber-50/40 border border-amber-200 text-xs text-amber-950 space-y-1">
+                <span className="font-bold flex items-center space-x-1.5">
+                  <HelpCircle className="w-4 h-4 text-amber-700" />
+                  <span>Detection Prerequisites</span>
+                </span>
+                <p className="text-slate-600 text-[11px]">
+                  To identify physical stockouts without falsified predictions, the system requires both positive on-hand inventory and historical demand sales.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 2: INSPECT & MAP COLUMNS */}
+        {currentStep === 2 && fileMeta && (
+          <div className="space-y-6">
+            {/* File Overview Banner */}
+            <div className="bg-white/95 rounded-2xl border border-slate-200/80 p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-800">
+                  <Database className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">{fileMeta.name}</h3>
+                  <div className="flex items-center space-x-3 text-xs text-slate-500 mt-0.5 font-mono">
+                    <span>{(fileMeta.size / 1024).toFixed(1)} KB</span>
+                    <span>•</span>
+                    <span>{fileMeta.rowCount.toLocaleString()} rows parsed</span>
+                    <span>•</span>
+                    <span>Delimiter: &quot;{fileMeta.delimiter}&quot;</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Dataset Type Selector */}
+              <div className="flex items-center space-x-2">
+                <label className="text-xs font-semibold text-slate-600">Dataset Target:</label>
+                <select
+                  value={selectedDataset}
+                  onChange={(e) => handleDatasetTypeChange(e.target.value as DatasetType)}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 border border-emerald-300 text-emerald-900 cursor-pointer"
+                >
+                  {(Object.keys(CANONICAL_SCHEMAS) as DatasetType[]).map((key) => (
+                    <option key={key} value={key}>
+                      {CANONICAL_SCHEMAS[key].name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Smart Detection Readiness Notice */}
+            <div
+              className={`p-4 rounded-xl border text-xs flex items-start space-x-3 ${
+                activeSchema.enablesDetection
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : 'bg-blue-50 border-blue-200 text-blue-900'
+              }`}
             >
-              <Download className="w-4 h-4 text-emerald-700" />
-              <span>Download CSV Template</span>
-            </button>
-          </div>
-
-          {/* Upload Dropzone */}
-          <div className="bg-white/95 rounded-2xl border border-slate-200/80 p-5 shadow-xs md:col-span-2 flex flex-col justify-center">
-            <label className="border-2 border-dashed border-emerald-300 hover:border-emerald-500 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-colors bg-emerald-50/20">
-              <Upload className="w-8 h-8 text-emerald-700 mb-2" />
-              <p className="text-sm font-semibold text-slate-900">Click or drag & drop CSV file here</p>
-              <p className="text-xs text-slate-500 mt-1">Must conform to the {currentTemplate.name} schema headers</p>
-              <input
-                type="file"
-                accept=".csv"
-                onChange={handleFileChange}
-                className="hidden"
-              />
-            </label>
-
-            {fileDetails && (
-              <div className="mt-3 flex items-center justify-between text-xs text-slate-700 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
-                <span className="font-mono font-medium">{fileDetails.name}</span>
-                <span className="text-slate-500">{(fileDetails.size / 1024).toFixed(1)} KB</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Validation Errors Box */}
-        {validationErrors.length > 0 && (
-          <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 space-y-1">
-            <div className="flex items-center space-x-2 font-bold text-rose-800">
-              <AlertTriangle className="w-4 h-4 text-rose-700" />
-              <span>Validation Issues Detected ({validationErrors.length})</span>
-            </div>
-            <ul className="list-disc list-inside space-y-0.5 text-[11px] pt-1">
-              {validationErrors.slice(0, 5).map((err, i) => (
-                <li key={i}>{err}</li>
-              ))}
-              {validationErrors.length > 5 && (
-                <li className="font-semibold">+ {validationErrors.length - 5} more errors</li>
-              )}
-            </ul>
-          </div>
-        )}
-
-        {/* Import Results Box */}
-        {importResult && (
-          <div
-            className={`p-4 rounded-xl border text-xs ${
-              importResult.inserted > 0
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                : 'bg-rose-50 border-rose-200 text-rose-900'
-            }`}
-          >
-            <div className="flex items-center space-x-2 font-bold text-sm">
-              <CheckCircle className="w-4 h-4 text-emerald-700" />
-              <span>
-                {importResult.inserted > 0
-                  ? `Successfully ingested ${importResult.inserted} records into persistent storage!`
-                  : 'Import failed to commit.'}
-              </span>
-            </div>
-            {importResult.errors.length > 0 && (
-              <ul className="list-disc list-inside space-y-0.5 text-[11px] pt-1 text-slate-600">
-                {importResult.errors.map((e, idx) => (
-                  <li key={idx}>{e}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
-        {/* Data Preview Table */}
-        {parsedData.length > 0 && (
-          <div className="bg-white/95 rounded-2xl overflow-hidden border border-slate-200/80 space-y-3 p-5 shadow-xs">
-            <div className="flex items-center justify-between">
+              <Sparkles className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
               <div>
-                <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
-                  <FileCheck className="w-4 h-4 text-emerald-700" />
-                  <span>Preview Parsed Records ({parsedData.length} total)</span>
-                </h3>
-                <p className="text-xs text-slate-500">Showing first 10 rows for validation before database commit</p>
+                <p className="font-bold">
+                  {activeSchema.enablesDetection
+                    ? 'Phantom Stock-Out Detection Ready'
+                    : 'Partial Retail Telemetry Target'}
+                </p>
+                <p className="text-slate-600 text-[11px] mt-0.5">
+                  {activeSchema.enablesDetection
+                    ? 'This dataset format contains both sales and inventory telemetry, enabling the real Poisson Anomaly Detector immediately upon import.'
+                    : activeSchema.requiredForDetectionNotice || activeSchema.description}
+                </p>
+              </div>
+            </div>
+
+            {/* Column Mapping Table */}
+            <div className="bg-white/95 rounded-2xl overflow-hidden border border-slate-200/80 shadow-xs p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                    <Settings2 className="w-4 h-4 text-emerald-700" />
+                    <span>Column Mapping & Automatic Synonym Matching</span>
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Verify or adjust mapped headers. High-confidence auto-matches are pre-selected.
+                  </p>
+                </div>
               </div>
 
-              <button
-                onClick={handleCommitImport}
-                disabled={isUploading || validationErrors.length > 0}
-                className="flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-[#064e3b] hover:bg-[#047857] text-white shadow-xs disabled:opacity-50 transition-all cursor-pointer"
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
+                      <th className="py-2.5 px-3">Canonical Field</th>
+                      <th className="py-2.5 px-3">Expected Type</th>
+                      <th className="py-2.5 px-3">Status</th>
+                      <th className="py-2.5 px-3">Mapped CSV Column</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {activeSchema.fields.map((field) => {
+                      const currentVal = columnMappings[field.key] || '';
+                      const conf = mappingConfidence[field.key] || 'NONE';
+                      return (
+                        <tr key={field.key} className="hover:bg-slate-50/50">
+                          <td className="py-3 px-3">
+                            <div className="font-bold text-slate-900 flex items-center space-x-1.5">
+                              <span>{field.label}</span>
+                              {field.required && <span className="text-rose-500">*</span>}
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-mono">{field.key}</span>
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-100 text-slate-700">
+                              {field.type}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3">
+                            {currentVal ? (
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  conf === 'HIGH'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}
+                              >
+                                {conf === 'HIGH' ? 'High Match' : 'Manual / Partial'}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 text-[11px]">Unmapped</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3">
+                            <select
+                              value={currentVal}
+                              onChange={(e) => handleMappingChange(field.key, e.target.value)}
+                              className="w-full max-w-xs px-3 py-1.5 rounded-xl text-xs font-medium border border-slate-200 bg-white hover:border-slate-300 focus:border-emerald-500 focus:outline-hidden"
+                            >
+                              <option value="">-- Do Not Map --</option>
+                              {fileMeta.headers.map((h) => (
+                                <option key={h} value={h}>
+                                  {h}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Validation Errors Box */}
+            {validationErrors.length > 0 && (
+              <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-900 space-y-2">
+                <div className="flex items-center justify-between font-bold text-rose-800">
+                  <div className="flex items-center space-x-2">
+                    <AlertTriangle className="w-4 h-4 text-rose-700" />
+                    <span>Validation Issues Detected ({validationErrors.length})</span>
+                  </div>
+                  <button
+                    onClick={downloadValidationReport}
+                    className="flex items-center space-x-1 text-[11px] underline hover:text-rose-950 font-semibold cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download Validation Report</span>
+                  </button>
+                </div>
+                <ul className="list-disc list-inside space-y-0.5 text-[11px] pt-1">
+                  {validationErrors.slice(0, 6).map((err, i) => (
+                    <li key={i}>{err}</li>
+                  ))}
+                  {validationErrors.length > 6 && (
+                    <li className="font-semibold">+ {validationErrors.length - 6} more errors</li>
+                  )}
+                </ul>
+              </div>
+            )}
+
+            {/* Data Preview Table */}
+            {rawRows.length > 0 && (
+              <div className="bg-white/95 rounded-2xl overflow-hidden border border-slate-200/80 space-y-3 p-5 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                      <FileCheck className="w-4 h-4 text-emerald-700" />
+                      <span>Preview First 5 Records</span>
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Sample data from {fileMeta.name} using your chosen column mappings
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={handleCommitImport}
+                    disabled={isUploading || validationErrors.length > 0}
+                    className="flex items-center space-x-1.5 px-5 py-2.5 rounded-xl text-xs font-semibold bg-[#064e3b] hover:bg-[#047857] text-white shadow-xs disabled:opacity-50 transition-all cursor-pointer"
+                  >
+                    {isUploading ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Committing to Database...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Commit {rawRows.length.toLocaleString()} Records</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
+                        {activeSchema.fields
+                          .filter((f) => columnMappings[f.key])
+                          .map((f) => (
+                            <th key={f.key} className="py-2 px-3">
+                              {f.label}
+                            </th>
+                          ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {rawRows.slice(0, 5).map((row, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/50">
+                          {activeSchema.fields
+                            .filter((f) => columnMappings[f.key])
+                            .map((f) => (
+                              <td key={f.key} className="py-2 px-3 font-mono text-[11px] text-slate-800">
+                                {String(row[columnMappings[f.key]] ?? '-')}
+                              </td>
+                            ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* STEP 3: COMPLETED & RUN DETECTION */}
+        {currentStep === 3 && importResult && (
+          <div className="bg-white/95 rounded-2xl border border-slate-200/80 p-8 shadow-xs text-center space-y-5 max-w-xl mx-auto">
+            <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center mx-auto">
+              <CheckCircle className="w-8 h-8" />
+            </div>
+
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Import Batch Successfully Ingested</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                {importResult.message ||
+                  `Committed ${importResult.inserted.toLocaleString()} records into the database with atomic consistency.`}
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+              <Link
+                href="/dashboard"
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-semibold bg-[#064e3b] hover:bg-[#047857] text-white shadow-xs flex items-center justify-center space-x-2 transition-colors"
               >
-                {isUploading ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Committing to Database...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Commit {parsedData.length} Rows</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </>
-                )}
+                <PlayCircle className="w-4 h-4" />
+                <span>Go to Dashboard & Run Detection</span>
+              </Link>
+              <button
+                onClick={() => {
+                  setCurrentStep(1);
+                  setFileMeta(null);
+                  setRawRows([]);
+                  setImportResult(null);
+                }}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+              >
+                Import Another File
               </button>
             </div>
-
-            <div className="overflow-x-auto border border-slate-200 rounded-xl">
-              <table className="w-full text-left text-xs text-slate-700">
-                <thead className="bg-slate-50 text-slate-600 font-semibold uppercase text-[11px] border-b border-slate-200">
-                  <tr>
-                    <th className="py-2.5 px-3">#</th>
-                    {currentTemplate.headers.map((h) => (
-                      <th key={h} className="py-2.5 px-3">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-mono">
-                  {parsedData.slice(0, 10).map((row, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50">
-                      <td className="py-2 px-3 text-slate-400">{idx + 1}</td>
-                      {currentTemplate.headers.map((h) => (
-                        <td key={h} className="py-2 px-3 whitespace-nowrap">
-                          {row[h] !== undefined ? String(row[h]) : '—'}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
           </div>
         )}
-      </section>
+      </div>
     </AppShell>
   );
 }

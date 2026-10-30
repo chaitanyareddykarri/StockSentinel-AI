@@ -309,7 +309,7 @@ export async function resolveUserRoleAndPermissions(
           if (membership.role === 'STORE_MANAGER') {
             const { data: assignment } = await supabase
               .from('store_assignments')
-              .select('store_id, stores(id, name, status)')
+              .select('store_id, store:stores!store_assignments_store_id_fkey(id, name, status)')
               .eq('company_id', membership.company_id)
               .eq('user_id', userId)
               .maybeSingle();
@@ -325,9 +325,10 @@ export async function resolveUserRoleAndPermissions(
               };
             }
 
-            const store = Array.isArray(assignment.stores)
-              ? assignment.stores[0]
-              : (assignment.stores as { id: string; name: string; status: string } | null);
+            const assignmentAny = assignment as Record<string, unknown>;
+            const store = Array.isArray(assignmentAny.store)
+              ? (assignmentAny.store as { id: string; name: string; status: string }[])[0]
+              : (assignmentAny.store as { id: string; name: string; status: string } | null);
 
             if (store?.status === 'INACTIVE') {
               return {
