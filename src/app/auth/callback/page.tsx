@@ -28,11 +28,17 @@ function CallbackHandler() {
         return;
       }
 
-      const completeWithSuccess = async () => {
+      const completeWithSuccess = async (token?: string) => {
         setIsSuccess(true);
         let destination = '/dashboard';
         try {
-          const sessionRes = await fetch('/api/auth/session');
+          const effectiveToken =
+            token || (typeof window !== 'undefined' ? localStorage.getItem('stocksentinel_token') : null);
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+          if (effectiveToken) {
+            headers['Authorization'] = `Bearer ${effectiveToken}`;
+          }
+          const sessionRes = await fetch('/api/auth/session', { headers, cache: 'no-store' });
           if (sessionRes.ok) {
             const sessionData = await sessionRes.json();
             if (sessionData.user) {
@@ -78,7 +84,7 @@ function CallbackHandler() {
               localStorage.setItem('stocksentinel_user_profile', JSON.stringify(initialProfile));
             } catch {}
           }
-          completeWithSuccess();
+          completeWithSuccess(data?.session?.access_token);
           return;
         } catch (err: unknown) {
           setError(err instanceof Error ? err.message : 'Supabase OAuth session exchange failed.');
@@ -133,7 +139,7 @@ function CallbackHandler() {
               localStorage.setItem('stocksentinel_user_profile', JSON.stringify(initialProfile));
             } catch {}
           }
-          completeWithSuccess();
+          completeWithSuccess(data?.session?.access_token);
           return;
         } catch (err: unknown) {
           setError(err instanceof Error ? err.message : 'Failed to establish Supabase session.');
@@ -158,9 +164,10 @@ function CallbackHandler() {
 
           if (typeof window !== 'undefined') {
             localStorage.setItem('stocksentinel_user_profile', JSON.stringify(data.user));
+            if (data?.token) localStorage.setItem('stocksentinel_token', data.token);
           }
 
-          completeWithSuccess();
+          completeWithSuccess(data?.token);
           return;
         } catch (err: unknown) {
           setError(err instanceof Error ? err.message : 'Google authentication processing failed.');
@@ -189,8 +196,9 @@ function CallbackHandler() {
             if (data.user) {
               if (typeof window !== 'undefined') {
                 localStorage.setItem('stocksentinel_user_profile', JSON.stringify(data.user));
+                if (data?.token) localStorage.setItem('stocksentinel_token', data.token);
               }
-              completeWithSuccess();
+              completeWithSuccess(data?.token);
               return;
             }
           }
