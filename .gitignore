@@ -124,6 +124,7 @@ yarn-error.log*
 /data/promotion_calendar.csv
 /data/holiday_calendar.csv
 /models/
+/samples/
 R1_Phantom_StockOut_Detector/
 python-service/
 

@@ -1,7 +1,0 @@
-sku,name,category,unit_price,avg_daily_demand,min_stock_threshold
-SKU-101,Organic Whole Milk 1 Gal,Dairy,4.99,4.8,8
-SKU-104,Electrolyte Citrus Rush 16oz,Beverages,2.99,5.5,12
-SKU-112,Artisan Sourdough Boule 500g,Bakery,4.49,3.2,5
-SKU-114,Matcha Green Tea Powder 50g,Beverages,14.99,0.35,2
-SKU-120,Extra Virgin Olive Oil 750ml,Pantry,12.49,1.8,4
-

@@ -1,0 +1,15 @@
+# ==============================================================================
+# StockSentinel AI — Cursor AI Context Ignore (.cursorignore)
+# ==============================================================================
+
+submission/*.csv
+baseline_results/*.csv
+baseline_results/*.json
+data/*.parquet
+data/*.csv
+data/*.json
+.next/
+node_modules/
+*.tsbuildinfo
+__pycache__/
+.env*

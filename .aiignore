@@ -1,0 +1,44 @@
+# ==============================================================================
+# StockSentinel AI — AI Context Ignore (.aiignore / .cursorignore)
+# Excludes large data tables, prediction outputs, build caches, and binary blobs
+# from AI indexing so AI tools focus strictly on canonical architecture & source code.
+# ==============================================================================
+
+# 1. Prediction Outputs & Evaluation Tables (Tens of thousands of raw CSV rows)
+submission/*.csv
+baseline_results/*.csv
+baseline_results/*.json
+
+# 2. Large Datasets & Local Database Persistence State
+data/*.parquet
+data/*.csv
+data/*.json
+data/interim/*
+data/processed/*
+data/raw/*
+!data/README.md
+
+# 3. Build & Dependency Artifacts
+.next/
+node_modules/
+out/
+build/
+dist/
+.turbo/
+*.tsbuildinfo
+next-env.d.ts
+
+# 4. Python Caches & Virtual Environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# 5. Environment Secrets & Certificates
+.env*
+*.pem
+*.key
+
+# 6. Binary Assets
+public/images/
