@@ -1,4 +1,9 @@
 import crypto from 'crypto';
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export function isValidUuid(val: unknown): val is string {
+  return typeof val === 'string' && UUID_REGEX.test(val.trim());
+}
+
 import fs from 'fs';
 import path from 'path';
 import { isSupabaseServerConfigured, getSupabaseServerClient } from '@/lib/db/supabaseServer';
@@ -138,7 +143,14 @@ function saveUsersToDisk() {
   const { usersFile } = getStoragePaths();
   try {
     const array = Array.from(usersCache.values());
-    fs.writeFileSync(/*turbopackIgnore: true*/ usersFile, JSON.stringify(array, null, 2), 'utf-8');
+    const tmpPath = `${usersFile}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(/*turbopackIgnore: true*/ tmpPath, JSON.stringify(array, null, 2), 'utf-8');
+    try {
+      fs.renameSync(tmpPath, usersFile);
+    } catch {
+      fs.writeFileSync(/*turbopackIgnore: true*/ usersFile, JSON.stringify(array, null, 2), 'utf-8');
+      try { fs.unlinkSync(tmpPath); } catch {}
+    }
   } catch (err) {
     console.warn('[UserStore] Could not persist users to disk:', err);
   }
@@ -220,8 +232,8 @@ export async function createUser(params: {
   // If role is explicitly specified by a trusted test fixture or administrative harness,
   // link the mock standalone membership and store assignment
   if (params.role === 'STORE_MANAGER') {
-    const companyId = `comp_${newUser.id}`;
-    const storeId = `store_${newUser.id}`;
+    const companyId = crypto.randomUUID();
+    const storeId = crypto.randomUUID();
     const storeName = params.storeName?.trim() || 'Store #101';
     setCompanyMembership({
       userId: newUser.id,
@@ -242,8 +254,8 @@ export async function createUser(params: {
       { id: storeId, name: storeName },
     ]);
   } else if (params.role === 'COMPANY_MANAGER') {
-    const companyId = `comp_${newUser.id}`;
-    const storeId = `store_${newUser.id}`;
+    const companyId = crypto.randomUUID();
+    const storeId = crypto.randomUUID();
     const storeName = params.storeName?.trim() || 'Store #101';
     setCompanyMembership({
       userId: newUser.id,
@@ -369,7 +381,7 @@ export async function findStoreAssignment(userId: string): Promise<StandaloneSto
 }
 
 export async function findCompanyStores(companyId: string): Promise<{ id: string; name: string; code?: string; location?: string }[]> {
-  if (isSupabaseServerConfigured()) {
+  if (isSupabaseServerConfigured() && isValidUuid(companyId)) {
     const supabase = getSupabaseServerClient();
     if (supabase) {
       try {
@@ -435,7 +447,7 @@ export function addCompanyStore(
 }
 
 export async function getStoreAssignmentsForCompany(companyId: string): Promise<StandaloneStoreAssignment[]> {
-  if (isSupabaseServerConfigured()) {
+  if (isSupabaseServerConfigured() && isValidUuid(companyId)) {
     const supabase = getSupabaseServerClient();
     if (supabase) {
       try {
@@ -485,7 +497,7 @@ export function createStandaloneCompany(data: {
   maxStores?: number;
   createdBy: string;
 }): StandaloneCompany {
-  const id = `comp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const id = crypto.randomUUID();
   const company: StandaloneCompany = {
     id,
     name: data.name.trim(),
@@ -738,7 +750,7 @@ export async function createCompanyInvitation(data: {
 }
 
 export async function revokeCompanyInvitation(companyId: string, invitationId: string): Promise<boolean> {
-  if (isSupabaseServerConfigured()) {
+  if (isSupabaseServerConfigured() && isValidUuid(companyId)) {
     const supabase = getSupabaseServerClient();
     if (supabase) {
       try {
@@ -768,7 +780,7 @@ export async function resendCompanyInvitation(
 ): Promise<StandaloneInvitation | null> {
   const newExpiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000).toISOString();
 
-  if (isSupabaseServerConfigured()) {
+  if (isSupabaseServerConfigured() && isValidUuid(companyId)) {
     const supabase = getSupabaseServerClient();
     if (supabase) {
       try {

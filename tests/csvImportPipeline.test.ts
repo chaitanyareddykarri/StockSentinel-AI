@@ -376,5 +376,29 @@ test('CSV Import Pipeline: Comprehensive Validation, UUID Integrity & Resolution
       }
     }
   });
+
+  await t.test('11. Non-UUID Company ID Sanitization: Ingests records safely with non-UUID company ID', async () => {
+    const rawCompanyId = `comp_${Date.now()}_test`;
+    const res = await importCsvRecords(
+      'stores',
+      [
+        {
+          code: 'SAN-101',
+          name: 'Sanitized Store #101',
+          location: 'San Jose, CA',
+          store_type: 'Supercenter',
+          total_skus: 10,
+          company_id: rawCompanyId,
+        },
+      ],
+      '00000000-0000-0000-0000-000000000001',
+      'stores.csv',
+      ['*'],
+      rawCompanyId
+    );
+
+    assert.equal(res.inserted, 1);
+    assert.deepEqual(res.errors, []);
+  });
 });
 

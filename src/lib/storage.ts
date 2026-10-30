@@ -66,7 +66,14 @@ function persistStorageToDisk(state: InMemoryStore) {
   try {
     const filePath = getDbFilePath();
     if (filePath) {
-      fs.writeFileSync(/*turbopackIgnore: true*/ filePath, JSON.stringify(state, null, 2), 'utf-8');
+      const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+      fs.writeFileSync(/*turbopackIgnore: true*/ tmpPath, JSON.stringify(state, null, 2), 'utf-8');
+      try {
+        fs.renameSync(tmpPath, filePath);
+      } catch {
+        fs.writeFileSync(/*turbopackIgnore: true*/ filePath, JSON.stringify(state, null, 2), 'utf-8');
+        try { fs.unlinkSync(tmpPath); } catch {}
+      }
     }
   } catch (err) {
     console.warn('[Storage] Could not persist state to disk:', err);
@@ -138,11 +145,11 @@ export async function getStores(
   if (supabase) {
     try {
       let query = supabase.from('stores').select('*').order('name');
-      if (companyId) query = query.eq('company_id', companyId);
+      if (companyId && isValidUuid(companyId)) query = query.eq('company_id', companyId);
       if (expandedAllowed && !expandedAllowed.includes('*')) {
         query = query.in('id', expandedAllowed.length > 0 ? expandedAllowed : ['__NONE__']);
       }
-      if (userId && !allowedStoreIds && !companyId) query = query.eq('user_id', userId);
+      if (userId && !allowedStoreIds && (!companyId || !isValidUuid(companyId))) query = query.eq('user_id', userId);
       const { data, error } = await query;
       if (!error && data) return data as Store[];
       if (error) {
@@ -188,8 +195,8 @@ export async function getProducts(userId?: string, companyId?: string): Promise<
   if (supabase) {
     try {
       let query = supabase.from('products').select('*').order('name');
-      if (companyId) query = query.eq('company_id', companyId);
-      if (userId && !companyId) query = query.eq('user_id', userId);
+      if (companyId && isValidUuid(companyId)) query = query.eq('company_id', companyId);
+      if (userId && (!companyId || !isValidUuid(companyId))) query = query.eq('user_id', userId);
       const { data, error } = await query;
       if (!error && data) return data as Product[];
       if (error) {
@@ -223,7 +230,7 @@ export async function getDailySales(
   if (supabase) {
     try {
       let query = supabase.from('daily_sales').select('*').order('date', { ascending: true });
-      if (companyId) query = query.eq('company_id', companyId);
+      if (companyId && isValidUuid(companyId)) query = query.eq('company_id', companyId);
       if (expandedAllowed && !expandedAllowed.includes('*')) {
         query = query.in('store_id', expandedAllowed.length > 0 ? expandedAllowed : ['__NONE__']);
       } else if (storeId && storeId !== 'ALL') {
@@ -272,7 +279,7 @@ export async function getInventorySnapshots(
   if (supabase) {
     try {
       let query = supabase.from('inventory_snapshots').select('*').order('date', { ascending: true });
-      if (companyId) query = query.eq('company_id', companyId);
+      if (companyId && isValidUuid(companyId)) query = query.eq('company_id', companyId);
       if (expandedAllowed && !expandedAllowed.includes('*')) {
         query = query.in('store_id', expandedAllowed.length > 0 ? expandedAllowed : ['__NONE__']);
       } else if (storeId && storeId !== 'ALL') {
@@ -316,7 +323,7 @@ export async function getPromotions(
   if (supabase) {
     try {
       let query = supabase.from('promotions').select('*');
-      if (companyId) query = query.eq('company_id', companyId);
+      if (companyId && isValidUuid(companyId)) query = query.eq('company_id', companyId);
       if (allowedStoreIds && !allowedStoreIds.includes('*')) {
         query = query.in('store_id', allowedStoreIds.length > 0 ? allowedStoreIds : ['__NONE__']);
       }
@@ -359,7 +366,7 @@ export async function getAlerts(filters?: {
   if (supabase) {
     try {
       let query = supabase.from('alerts').select('*').order('risk_score', { ascending: false });
-      if (filters?.companyId) query = query.eq('company_id', filters.companyId);
+      if (filters?.companyId && isValidUuid(filters.companyId)) query = query.eq('company_id', filters.companyId);
       if (expandedAllowed && !expandedAllowed.includes('*')) {
         query = query.in('store_id', expandedAllowed.length > 0 ? expandedAllowed : ['__NONE__']);
       } else if (filters?.storeId && filters.storeId !== 'ALL') {
@@ -557,7 +564,7 @@ export async function getAuditLogs(
   if (supabase) {
     try {
       let query = supabase.from('verification_audit_log').select('*').order('created_at', { ascending: false });
-      if (companyId) query = query.eq('company_id', companyId);
+      if (companyId && isValidUuid(companyId)) query = query.eq('company_id', companyId);
       if (alertId) query = query.eq('alert_id', alertId);
       const { data, error } = await query;
       if (!error && data) return data as AuditLogEntry[];
@@ -592,7 +599,7 @@ export async function getDetectionRuns(
   if (supabase) {
     try {
       let query = supabase.from('detection_runs').select('*').order('run_date', { ascending: false });
-      if (companyId) query = query.eq('company_id', companyId);
+      if (companyId && isValidUuid(companyId)) query = query.eq('company_id', companyId);
       if (expandedAllowed && !expandedAllowed.includes('*')) {
         const allowedWithAll = [...expandedAllowed, 'ALL'];
         query = query.in('store_id', allowedWithAll);
@@ -827,16 +834,86 @@ export async function importCsvRecords(
 
   const isDbMode = Boolean(supabase);
 
-  // Guarantee all primary keys and UUID foreign keys are genuine RFC 4122 UUIDs
+  // In database mode (Supabase PostgreSQL), company_id is a UUID foreign key referencing public.companies(id).
+  // Any non-UUID string (e.g. "comp_...") will throw PostgreSQL error 22P02.
+  // Moreover, any UUID not present in public.companies violates the foreign key constraint.
+  // We resolve a verified, existing company UUID from Supabase, or fall back to null.
+  let verifiedDbCompanyId: string | null = null;
+  if (supabase) {
+    const candidateUuid = (companyId && isValidUuid(companyId))
+      ? companyId
+      : (records[0]?.company_id && isValidUuid(records[0]?.company_id))
+        ? String(records[0].company_id)
+        : null;
+
+    if (candidateUuid) {
+      try {
+        const { data: comp } = await supabase
+          .from('companies')
+          .select('id')
+          .eq('id', candidateUuid)
+          .maybeSingle();
+        if (comp?.id) {
+          verifiedDbCompanyId = comp.id;
+        }
+      } catch {}
+    }
+
+    if (!verifiedDbCompanyId && userId && isValidUuid(userId)) {
+      try {
+        const { data: membership } = await supabase
+          .from('company_memberships')
+          .select('company_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (membership?.company_id && isValidUuid(membership.company_id)) {
+          verifiedDbCompanyId = membership.company_id;
+        }
+      } catch {}
+    }
+
+    if (!verifiedDbCompanyId) {
+      try {
+        const { data: demoComp } = await supabase
+          .from('companies')
+          .select('id')
+          .eq('is_demo', true)
+          .limit(1)
+          .maybeSingle();
+        if (demoComp?.id) {
+          verifiedDbCompanyId = demoComp.id;
+        }
+      } catch {}
+    }
+  }
+
+  // Guarantee all primary keys and UUID foreign keys are genuine RFC 4122 UUIDs or null
   const recordsToInsert = records.map((r) => {
     const rawId = r.id;
     const finalId = isValidUuid(rawId) ? String(rawId).trim() : crypto.randomUUID();
-    const hasValidCompany = companyId && (isValidUuid(companyId) || !isDbMode);
+
+    const cleanedRow: Record<string, unknown> = { ...r };
+
+    if (isDbMode) {
+      // PostgreSQL strictly requires a valid UUID or NULL for company_id.
+      // Non-UUID strings (like comp_...) are replaced with verifiedDbCompanyId or null.
+      cleanedRow.company_id = verifiedDbCompanyId;
+      if (userId && isValidUuid(userId)) {
+        cleanedRow.user_id = userId;
+      }
+    } else {
+      const fallbackCompany = companyId || (r.company_id as string) || undefined;
+      if (fallbackCompany) {
+        cleanedRow.company_id = fallbackCompany;
+      }
+      if (userId) {
+        cleanedRow.user_id = userId;
+      }
+    }
+
     return {
-      ...r,
+      ...cleanedRow,
       id: finalId,
-      ...(userId ? { user_id: userId } : {}),
-      ...(hasValidCompany ? { company_id: companyId } : {}),
     };
   });
 
@@ -861,7 +938,7 @@ export async function importCsvRecords(
           try {
             await supabase.from('import_jobs').insert({
               user_id: userId,
-              company_id: companyId && isValidUuid(companyId) ? companyId : null,
+              company_id: verifiedDbCompanyId,
               entity_type: entityType,
               filename,
               records_count: 0,
@@ -877,7 +954,7 @@ export async function importCsvRecords(
         try {
           await supabase.from('import_jobs').insert({
             user_id: userId,
-            company_id: companyId && isValidUuid(companyId) ? companyId : null,
+            company_id: verifiedDbCompanyId,
             entity_type: entityType,
             filename,
             records_count: records.length,
@@ -958,7 +1035,7 @@ export async function getConversationById(
         .select('*')
         .eq('id', conversationId)
         .eq('user_id', userId);
-      if (companyId) query = query.eq('company_id', companyId);
+      if (companyId && isValidUuid(companyId)) query = query.eq('company_id', companyId);
       const { data, error } = await query.single();
       if (!error && data) return data as ChatConversation;
     } catch {}
@@ -985,7 +1062,7 @@ export async function createConversation(
   const newConv: ChatConversation = {
     id,
     user_id: userId,
-    company_id: companyId,
+    ...(companyId && isValidUuid(companyId) ? { company_id: companyId } : {}),
     title: cleanTitle,
     created_at: now,
     updated_at: now,
@@ -1024,7 +1101,7 @@ export async function deleteConversation(
         .delete()
         .eq('id', conversationId)
         .eq('user_id', userId);
-      if (companyId) query = query.eq('company_id', companyId);
+      if (companyId && isValidUuid(companyId)) query = query.eq('company_id', companyId);
       const { data, error } = await query.select();
       if (!error && data && data.length > 0) return true;
       if (!error && data && data.length === 0) return false;

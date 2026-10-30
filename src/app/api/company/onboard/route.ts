@@ -9,7 +9,8 @@ import {
   hashInvitationToken,
   createStandaloneInvitation,
 } from '@/lib/auth/userStore';
-import { getMemoryStore } from '@/lib/storage';
+import { getMemoryStore, isValidUuid } from '@/lib/storage';
+import { isSupabaseServerConfigured, getSupabaseServerClient } from '@/lib/db/supabaseServer';
 
 export async function POST(request: Request) {
   try {
@@ -120,6 +121,33 @@ export async function POST(request: Request) {
       status: 'ACTIVE',
       companyStatus: 'ACTIVE',
     });
+
+    if (isSupabaseServerConfigured()) {
+      const supabase = getSupabaseServerClient();
+      if (supabase) {
+        try {
+          await supabase.from('companies').upsert({
+            id: company.id,
+            name: company.name,
+            slug: company.slug,
+            max_stores: company.maxStores,
+            status: company.status,
+            created_by: isValidUuid(auth.user.id) ? auth.user.id : null,
+          });
+
+          if (isValidUuid(auth.user.id)) {
+            await supabase.from('company_memberships').upsert({
+              company_id: company.id,
+              user_id: auth.user.id,
+              role: 'COMPANY_MANAGER',
+              status: 'ACTIVE',
+            });
+          }
+        } catch (dbErr) {
+          console.warn('[Onboard] Supabase company sync error:', dbErr);
+        }
+      }
+    }
 
     // 3. Create stores and generate single-use invitations
     const createdStores: { id: string; name: string; location: string }[] = [];
