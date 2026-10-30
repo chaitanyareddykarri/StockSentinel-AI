@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --loader ./tests/ts-resolver.mjs --test tests/*.test.ts",
+    "test": "tsx --test tests/*.test.ts",
     "test:ml": "py -m unittest discover -s ml/tests || python -m unittest discover -s ml/tests",
     "evaluate": "py scripts/run_evaluation.py || python scripts/run_evaluation.py",
     "validate:data": "py scripts/validate_data.py || python scripts/validate_data.py",
@@ -36,6 +36,7 @@
     "eslint-config-next": "16.4.2",
     "pg": "^8.23.1",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }
