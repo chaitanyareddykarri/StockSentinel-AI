@@ -52,6 +52,8 @@ next-env.d.ts
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+score*.json
+score.json
 
 # ------------------------------------------------------------------------------
 # 5. Python Bytecode, Caches & Virtual Environments
@@ -122,6 +124,8 @@ yarn-error.log*
 /data/promotion_calendar.csv
 /data/holiday_calendar.csv
 /models/
+R1_Phantom_StockOut_Detector/
+python-service/
 
 # ------------------------------------------------------------------------------
 # 10. Agent & Assistant Local State

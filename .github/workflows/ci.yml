@@ -1,0 +1,86 @@
+name: StockSentinel AI — CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --------------------------------------------------------------------------
+  # 1. Frontend, Backend API & Multi-Tenant RBAC Test Suite
+  # --------------------------------------------------------------------------
+  frontend-and-api-verification:
+    name: Next.js, TypeScript & 128 Automated Unit/Integration Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js v20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Verify TypeScript Type-Safety (0 errors)
+        run: npx tsc --noEmit
+
+      - name: Execute Full Automated Test Suite (128 Tests)
+        run: npm test
+
+      - name: Build Next.js Production Assets
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+          NODE_ENV: production
+
+  # --------------------------------------------------------------------------
+  # 2. ML Detection & Official Hackathon Submission Verification
+  # --------------------------------------------------------------------------
+  ml-compliance-and-verification:
+    name: Python ML Pipeline & R1 Submission Rules Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Python Scientific Dependencies
+        run: pip install numpy pandas pyarrow
+
+      - name: Verify All 9 Official Submission Criteria
+        run: python scripts/verify_submission.py
+
+  # --------------------------------------------------------------------------
+  # 3. Security, Secret Leak Prevention & Docker Lint
+  # --------------------------------------------------------------------------
+  security-and-secret-audit:
+    name: Git Secret Leak Prevention & Security Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Audit Tracked Files for Leaked Credentials
+        run: |
+          echo "Scanning tracked git files for credential leaks..."
+          git ls-files | grep -E '(\.env(\.local|\.production|\.development)?|\.pem|\.key|\.pfx)$' && {
+            echo "ERROR: Forbidden secret file detected in git repository tracking!"
+            exit 1
+          } || echo "✓ Secret leak check passed: No environment or private key files tracked in git."
