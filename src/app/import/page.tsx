@@ -301,9 +301,15 @@ export default function UniversalImportPage() {
     });
 
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('stocksentinel_token') : null;
+      if (storedToken) {
+        headers['Authorization'] = `Bearer ${storedToken}`;
+      }
+
       const res = await fetch('/api/import', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           entityType: selectedDataset,
           records: normalizedRecords,
