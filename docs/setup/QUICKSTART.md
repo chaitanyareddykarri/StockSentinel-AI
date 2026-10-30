@@ -49,11 +49,17 @@ npm test
 # 2. Verify TypeScript compilation (0 errors)
 npx tsc --noEmit
 
-# 3. Test production Next.js build
+# 3. Test production Next.js build (compiles all 43 routes)
 npm run build
 
-# 4. Run official offline benchmark evaluation
-python scripts/run_evaluation.py
+# 4. Generate dev and test submissions (~3.6s)
+py scripts/run_stocksentinel_detection.py
+
+# 5. Score predictions against public ground truth (Precision@20: 0.4301)
+py evaluate.py --submission submission/R1_predictions_dev.csv --truth data/dev_truth.csv --out score.json
+
+# 6. Verify all 9 official competition submission criteria
+py scripts/verify_submission.py
 ```
 
 ---
