@@ -57,3 +57,16 @@ skills-lock.json
 # python bytecode
 __pycache__/
 *.pyc
+
+# R1 competition large data files & models
+*.parquet
+/data/*.parquet
+/data/daily_sales_inventory*
+/data/dev_truth.csv
+/data/dev_labels.csv
+/data/store_master.csv
+/data/sku_master.csv
+/data/promotion_calendar.csv
+/data/holiday_calendar.csv
+models/
+
