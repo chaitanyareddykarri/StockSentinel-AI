@@ -16,6 +16,7 @@ data/*.json
 data/interim/*
 data/processed/*
 data/raw/*
+data/R1_Phantom_StockOut_Detector/
 !data/README.md
 
 # 3. Build & Dependency Artifacts

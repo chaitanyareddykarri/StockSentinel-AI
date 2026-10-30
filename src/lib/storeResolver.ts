@@ -59,9 +59,9 @@ export function resolveDemoStoreId(storeRef?: string | null, storeList?: Store[]
   if (upper.includes('TAC-308')) return 'store-003';
 
   // 4. Store Numbers
-  if (/\b204\b|#204/.test(ref)) return 'store-002';
-  if (/\b101\b|#101/.test(ref)) return 'store-001';
-  if (/\b308\b|#308/.test(ref)) return 'store-003';
+  if (/(?:^|\bstore\s+|#)204\b/i.test(ref) || upper === '204') return 'store-002';
+  if (/(?:^|\bstore\s+|#)101\b/i.test(ref) || upper === '101') return 'store-001';
+  if (/(?:^|\bstore\s+|#)308\b/i.test(ref) || upper === '308') return 'store-003';
 
   // 5. City and Location matching
   if (lower.includes('bellevue')) return 'store-002';

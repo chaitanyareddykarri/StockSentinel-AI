@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { importCsvRecords, getImportCatalogContext, isValidUuid } from '@/lib/storage';
+import { importCsvRecords, getImportCatalogContext, isValidUuid, getMemoryStore } from '@/lib/storage';
 import { getAuthenticatedUser } from '@/lib/auth/serverAuth';
 import { isSameOrAliasedStore } from '@/lib/storeResolver';
 import { isStoreOwnedByOtherCompany } from '@/lib/auth/userStore';
@@ -118,14 +118,28 @@ export async function POST(request: Request) {
           continue;
         }
 
-        // Resolve store to actual database record (UUID) by matching UUID or store code
-        const matchingStore = catalogContext?.stores.find(
-          (s) =>
-            s.id.toLowerCase() === rowStoreId.toLowerCase() ||
-            s.code.toLowerCase() === rowStoreId.toLowerCase() ||
-            isSameOrAliasedStore(s.id, rowStoreId) ||
-            isSameOrAliasedStore(s.code, rowStoreId)
-        );
+        // Resolve store to actual database record (UUID) by matching UUID or store code (Exact match first, then alias fallback)
+        const matchingStore =
+          catalogContext?.stores.find(
+            (s) =>
+              s.id.toLowerCase() === rowStoreId.toLowerCase() ||
+              (s.code && s.code.toLowerCase() === rowStoreId.toLowerCase())
+          ) ||
+          getMemoryStore().stores.find(
+            (s) =>
+              s.id.toLowerCase() === rowStoreId.toLowerCase() ||
+              (s.code && s.code.toLowerCase() === rowStoreId.toLowerCase())
+          ) ||
+          catalogContext?.stores.find(
+            (s) =>
+              isSameOrAliasedStore(s.id, rowStoreId) ||
+              (s.code && isSameOrAliasedStore(s.code, rowStoreId))
+          ) ||
+          getMemoryStore().stores.find(
+            (s) =>
+              isSameOrAliasedStore(s.id, rowStoreId) ||
+              (s.code && isSameOrAliasedStore(s.code, rowStoreId))
+          );
 
         if (!matchingStore) {
           // Store Manager cannot import records for another store

@@ -101,6 +101,8 @@ yarn-error.log*
 # 8. Local Runtime Storage, Caches & Temporary Files
 # ------------------------------------------------------------------------------
 *.zip
+*.tar.gz
+*.tgz
 /data/*.json
 /data/*.tmp*
 /data/raw/*
@@ -110,6 +112,8 @@ yarn-error.log*
 /data/processed/*
 !/data/processed/.gitkeep
 /scratch/
+scratch/
+.user_uploaded/
 *.tmp
 
 # ------------------------------------------------------------------------------
@@ -124,6 +128,8 @@ yarn-error.log*
 /data/sku_master.csv
 /data/promotion_calendar.csv
 /data/holiday_calendar.csv
+/data/R1_Phantom_StockOut_Detector/
+data/R1_Phantom_StockOut_Detector/
 /models/
 /samples/
 R1_Phantom_StockOut_Detector/

@@ -68,6 +68,10 @@ function getDbFilePath(): string {
 }
 
 function persistStorageToDisk(state: InMemoryStore) {
+  // During tests, do not write to shared disk file to prevent race conditions across parallel test suites
+  if (process.env.NODE_ENV === 'test') {
+    return;
+  }
   try {
     const filePath = getDbFilePath();
     if (filePath) {
@@ -822,6 +826,10 @@ export async function getImportCatalogContext(
 
   if (companyId) {
     stores = stores.filter((s) => {
+      // If store is explicitly in allowedStoreIds (e.g., store manager's assigned store), always permit
+      if (allowedStoreIds && (allowedStoreIds.includes(s.id) || (s.code && allowedStoreIds.includes(s.code)))) {
+        return true;
+      }
       // Reject stores that explicitly belong to another company
       if (s.company_id && s.company_id !== companyId && s.company_id !== '00000000-0000-0000-0000-000000000001') {
         return false;
