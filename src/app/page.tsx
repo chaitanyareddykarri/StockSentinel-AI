@@ -908,7 +908,7 @@ export default function IntroPage() {
                   </Link>
                 </li>
                 <li>
-                  <Link href="/verification" className="hover:text-[#064e3b] transition-colors">
+                  <Link href="/alerts" className="hover:text-[#064e3b] transition-colors">
                     Shelf Verification
                   </Link>
                 </li>
