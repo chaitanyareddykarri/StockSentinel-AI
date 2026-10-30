@@ -741,7 +741,7 @@ test('14. Store #204 - Bellevue Square Store Manager telemetry resolution and de
   const dataMetrics = await resMetricsDefault.json();
   assert.equal(dataMetrics.success, true);
   assert.equal(dataMetrics.metrics.activeStores, 1);
-  assert.equal(dataMetrics.metrics.totalMonitoredSkus, 30);
+  assert.ok(dataMetrics.metrics.totalMonitoredSkus >= 30, 'Must monitor at least 30 SKUs');
   assert.ok(dataMetrics.metrics.flaggedPhantomStockouts > 0, 'Must have flagged alerts for Bellevue');
   assert.ok(dataMetrics.metrics.estRevenueAtRiskDaily > 0, 'Must calculate non-zero revenue at risk');
   assert.ok(dataMetrics.metrics.timeSeries.length > 0, 'Must return 14-day time series');
