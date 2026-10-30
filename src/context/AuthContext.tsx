@@ -158,29 +158,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const supabase = getSupabaseClient();
 
     if (supabase) {
-      // 1. Check existing Supabase session & fetch verified RBAC state
-      supabase.auth.getSession().then(async ({ data: { session } }) => {
-        if (!isMounted) return;
-        if (session?.user) {
-          if (session.access_token && typeof document !== 'undefined') {
-            document.cookie = `stocksentinel_session=${encodeURIComponent(session.access_token)}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
-          }
-          const mapped = mapSupabaseUser(session.user);
-          setUser(mapped);
-          try {
-            const serverUser = await refreshSession();
-            if (isMounted && serverUser) {
-              setUser(serverUser);
-            }
-          } catch {}
-        } else {
-          setUser(null);
-          try {
-            localStorage.removeItem(USER_STORAGE_KEY);
-          } catch {}
-        }
+      // Safety timeout: If Supabase connection hangs or takes >1.5s, unblock loading
+      const safetyTimeout = setTimeout(() => {
         if (isMounted) setLoading(false);
-      });
+      }, 1500);
+
+      // 1. Check existing Supabase session & fetch verified RBAC state
+      supabase.auth
+        .getSession()
+        .then(async ({ data: { session } }) => {
+          clearTimeout(safetyTimeout);
+          if (!isMounted) return;
+          if (session?.user) {
+            if (session.access_token && typeof document !== 'undefined') {
+              document.cookie = `stocksentinel_session=${encodeURIComponent(session.access_token)}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+            }
+            const mapped = mapSupabaseUser(session.user);
+            setUser(mapped);
+            try {
+              const serverUser = await refreshSession();
+              if (isMounted && serverUser) {
+                setUser(serverUser);
+              }
+            } catch {}
+          } else {
+            setUser(null);
+            try {
+              localStorage.removeItem(USER_STORAGE_KEY);
+            } catch {}
+          }
+        })
+        .catch(() => {
+          if (isMounted) setUser(null);
+        })
+        .finally(() => {
+          clearTimeout(safetyTimeout);
+          if (isMounted) setLoading(false);
+        });
 
       // 2. Listen to real-time auth changes
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
