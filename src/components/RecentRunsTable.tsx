@@ -10,55 +10,55 @@ interface RecentRunsTableProps {
 
 export function RecentRunsTable({ runs }: RecentRunsTableProps) {
   return (
-    <div className="glass-panel p-5 rounded-2xl border border-white/10 shadow-xl space-y-4">
+    <div className="bg-white/90 backdrop-blur-md p-5 rounded-2xl border border-emerald-900/10 shadow-xs space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold text-white flex items-center space-x-2">
-          <History className="w-4 h-4 text-emerald-400" />
+        <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+          <History className="w-4 h-4 text-emerald-700" />
           <span>Detection Run History</span>
         </h3>
-        <span className="text-xs text-slate-400">{runs.length} Runs Recorded</span>
+        <span className="text-xs text-slate-500 font-medium">{runs.length} Runs Recorded</span>
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs text-slate-300">
-          <thead className="text-[11px] uppercase tracking-wider text-slate-500 border-b border-white/5">
+        <table className="w-full text-left text-xs text-slate-700">
+          <thead className="text-[11px] uppercase tracking-wider text-slate-500 border-b border-slate-200">
             <tr>
-              <th className="pb-2">Run ID / Date</th>
-              <th className="pb-2 text-center">Engine</th>
-              <th className="pb-2 text-center">Analyzed</th>
-              <th className="pb-2 text-center">Flagged</th>
-              <th className="pb-2 text-right">Critical</th>
+              <th className="pb-2 font-semibold">Run ID / Date</th>
+              <th className="pb-2 text-center font-semibold">Engine</th>
+              <th className="pb-2 text-center font-semibold">Analyzed</th>
+              <th className="pb-2 text-center font-semibold">Flagged</th>
+              <th className="pb-2 text-right font-semibold">Critical</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-white/5">
+          <tbody className="divide-y divide-slate-100">
             {runs.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-6 text-center text-slate-500">
+                <td colSpan={5} className="py-6 text-center text-slate-400">
                   No detection runs on record. Click &quot;Run Detection&quot; to trigger one.
                 </td>
               </tr>
             ) : (
               runs.slice(0, 5).map((run) => (
-                <tr key={run.id} className="hover:bg-slate-900/30">
+                <tr key={run.id} className="hover:bg-slate-50/70 transition-colors">
                   <td className="py-2.5">
-                    <p className="font-semibold text-white font-mono">{run.id}</p>
-                    <p className="text-[10px] text-slate-400">
+                    <p className="font-semibold text-slate-900 font-mono">{run.id}</p>
+                    <p className="text-[10px] text-slate-500">
                       {new Date(run.run_date).toLocaleString()}
                     </p>
                   </td>
                   <td className="py-2.5 text-center">
-                    <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
-                      <Cpu className="w-3 h-3" />
+                    <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-800 border border-indigo-200">
+                      <Cpu className="w-3 h-3 text-indigo-600" />
                       <span>{run.engine_type.replace('_', ' ')}</span>
                     </span>
                   </td>
-                  <td className="py-2.5 text-center text-slate-300 font-mono">
+                  <td className="py-2.5 text-center text-slate-800 font-mono font-medium">
                     {run.total_skus_analyzed}
                   </td>
-                  <td className="py-2.5 text-center font-bold text-amber-400 font-mono">
+                  <td className="py-2.5 text-center font-bold text-amber-700 font-mono">
                     {run.flagged_count}
                   </td>
-                  <td className="py-2.5 text-right font-bold text-rose-400 font-mono">
+                  <td className="py-2.5 text-right font-bold text-rose-700 font-mono">
                     {run.critical_count}
                   </td>
                 </tr>

@@ -1,4 +1,5 @@
-import {
+import crypto from 'crypto';
+import type {
   Alert,
   DetectionConfig,
   DailySale,
@@ -71,16 +72,24 @@ export function runBaselineDetection({
     const existing = latestInventoryMap.get(key);
     if (!existing || new Date(item.date) > new Date(existing.date)) {
       latestInventoryMap.set(key, item);
+      if (item.sku) latestInventoryMap.set(`${item.store_id}__${item.sku}`, item);
+      if (item.product_id) latestInventoryMap.set(`${item.store_id}__${item.product_id}`, item);
     }
   });
 
   // Group sales by store and SKU, sorted by date ascending
   const salesHistoryMap = new Map<string, DailySale[]>();
   sales.forEach((sale) => {
-    const key = `${sale.store_id}__${sale.sku || sale.product_id}`;
-    const list = salesHistoryMap.get(key) || [];
-    list.push(sale);
-    salesHistoryMap.set(key, list);
+    const keys = new Set<string>();
+    if (sale.sku) keys.add(`${sale.store_id}__${sale.sku}`);
+    if (sale.product_id) keys.add(`${sale.store_id}__${sale.product_id}`);
+    if (keys.size === 0) keys.add(`${sale.store_id}__${sale.sku || sale.product_id}`);
+
+    keys.forEach((key) => {
+      const list = salesHistoryMap.get(key) || [];
+      list.push(sale);
+      salesHistoryMap.set(key, list);
+    });
   });
 
   // Sort each sale list by date ascending
@@ -95,8 +104,10 @@ export function runBaselineDetection({
     const storeAlerts: Alert[] = [];
 
     products.forEach((product) => {
-      const invKey = `${store.id}__${product.sku}`;
-      const invSnapshot = latestInventoryMap.get(invKey);
+      const invSnapshot =
+        latestInventoryMap.get(`${store.id}__${product.sku}`) ||
+        (product.id ? latestInventoryMap.get(`${store.id}__${product.id}`) : undefined) ||
+        (store.code ? latestInventoryMap.get(`${store.code}__${product.sku}`) : undefined);
 
       // Phantom stockout requires positive recorded on-hand stock
       if (!invSnapshot || invSnapshot.on_hand_stock <= 0) {
@@ -104,8 +115,11 @@ export function runBaselineDetection({
       }
 
       const recordedStock = invSnapshot.on_hand_stock;
-      const salesKey = `${store.id}__${product.sku}`;
-      const history = salesHistoryMap.get(salesKey) || [];
+      const history =
+        salesHistoryMap.get(`${store.id}__${product.sku}`) ||
+        (product.id ? salesHistoryMap.get(`${store.id}__${product.id}`) : undefined) ||
+        (store.code ? salesHistoryMap.get(`${store.code}__${product.sku}`) : undefined) ||
+        [];
 
       if (history.length === 0) {
         return;
@@ -234,7 +248,7 @@ export function runBaselineDetection({
 
       const now = new Date().toISOString();
       const alert: Alert = {
-        id: `ALT-${store.code}-${product.sku}-${Date.now().toString(36)}`,
+        id: crypto.randomUUID(),
         run_id: '', // Will be attached by caller
         store_id: store.id,
         store_name: store.name,

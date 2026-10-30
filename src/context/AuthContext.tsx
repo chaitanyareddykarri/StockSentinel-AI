@@ -4,30 +4,82 @@ import React, { createContext, useContext, useEffect, useState, useMemo, useCall
 import { useRouter } from 'next/navigation';
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/db/supabaseClient';
 import { User as SupabaseUser } from '@supabase/supabase-js';
+import type { UserAccessState } from '@/types';
 
 export interface AppUser {
   id: string;
   email: string;
   name: string;
+  accessState?: UserAccessState;
+  role: string;
+  companyId?: string;
+  companyName?: string;
+  companySlug?: string;
+  companyStatus?: 'PENDING_ONBOARDING' | 'ACTIVE' | 'SUSPENDED';
+  assignedStoreId?: string;
+  assignedStoreName?: string;
   storeName?: string;
-  role: 'STORE_MANAGER' | 'INVENTORY_LEAD' | 'ASSOCIATE' | 'EVALUATOR';
+  accessibleStoreIds?: string[];
   avatarUrl?: string;
+  authMode?: 'supabase' | 'standalone';
+  isDurable?: boolean;
 }
 
 interface AuthContextType {
   user: AppUser | null;
   loading: boolean;
+  isLoggingOut: boolean;
   isSupabaseAuth: boolean;
   signInWithEmail: (email: string, password: string) => Promise<{ error?: string }>;
-  signUpWithEmail: (email: string, password: string, name: string, storeName?: string) => Promise<{ error?: string }>;
-  signInWithGoogle: () => Promise<{ error?: string }>;
+  signUpWithEmail: (email: string, password: string, name: string, storeName?: string) => Promise<{ error?: string; needsEmailConfirmation?: boolean }>;
+  signInWithGoogle: () => Promise<{ error?: string; cancelled?: boolean; redirected?: boolean }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error?: string }>;
+  refreshSession: () => Promise<AppUser | null>;
+  getAuthHeaders: () => Promise<Record<string, string>>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const USER_STORAGE_KEY = 'stocksentinel_user_profile';
+
+/**
+ * Returns authorization headers containing Bearer token from the active Supabase session or standalone cookie,
+ * and synchronizes the session into document.cookie for reliable subsequent requests.
+ */
+export async function getClientAuthHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  try {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+        if (typeof document !== 'undefined') {
+          document.cookie = `stocksentinel_session=${encodeURIComponent(session.access_token)}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+        }
+        return headers;
+      }
+    }
+  } catch {}
+
+  if (typeof document !== 'undefined') {
+    const match = document.cookie.match(/stocksentinel_session=([^;]+)/);
+    if (match) {
+      const token = decodeURIComponent(match[1].trim()).replace(/^"+|"+$/g, '');
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+  }
+
+  return headers;
+}
 
 const GOOGLE_CLIENT_ID =
   process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
@@ -39,8 +91,9 @@ function mapSupabaseUser(sbUser: SupabaseUser): AppUser {
     id: sbUser.id,
     email: sbUser.email || '',
     name: meta.full_name || meta.name || sbUser.email?.split('@')[0] || 'Store Associate',
-    storeName: meta.store_name || 'Retail Supercenter',
-    role: (meta.role as AppUser['role']) || 'STORE_MANAGER',
+    storeName: meta.store_name || 'Retail Operations',
+    accessState: 'PENDING_ASSIGNMENT',
+    role: meta.role || 'PENDING_ASSIGNMENT',
     avatarUrl: meta.avatar_url || meta.picture,
   };
 }
@@ -62,6 +115,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return null;
   });
   const [loading, setLoading] = useState<boolean>(true);
+  const [isLoggingOut, setIsLoggingOut] = useState<boolean>(false);
+
+  const refreshSession = useCallback(async (): Promise<AppUser | null> => {
+    try {
+      const supabase = getSupabaseClient();
+      const headers: Record<string, string> = {};
+      if (supabase) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`;
+          if (typeof document !== 'undefined') {
+            document.cookie = `stocksentinel_session=${encodeURIComponent(session.access_token)}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+          }
+        }
+      }
+
+      const res = await fetch('/api/auth/session', { headers, cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.user) {
+          setUser(data.user);
+          try {
+            localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data.user));
+          } catch {}
+          return data.user;
+        }
+      }
+      setUser(null);
+      try {
+        localStorage.removeItem(USER_STORAGE_KEY);
+      } catch {}
+      return null;
+    } catch {
+      return null;
+    }
+  }, []);
 
   // Synchronize session on mount
   useEffect(() => {
@@ -69,14 +158,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const supabase = getSupabaseClient();
 
     if (supabase) {
-      // 1. Check existing Supabase session
-      supabase.auth.getSession().then(({ data: { session } }) => {
+      // 1. Check existing Supabase session & fetch verified RBAC state
+      supabase.auth.getSession().then(async ({ data: { session } }) => {
         if (!isMounted) return;
         if (session?.user) {
+          if (session.access_token && typeof document !== 'undefined') {
+            document.cookie = `stocksentinel_session=${encodeURIComponent(session.access_token)}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+          }
           const mapped = mapSupabaseUser(session.user);
           setUser(mapped);
           try {
-            localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(mapped));
+            const serverUser = await refreshSession();
+            if (isMounted && serverUser) {
+              setUser(serverUser);
+            }
           } catch {}
         } else {
           setUser(null);
@@ -84,25 +179,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             localStorage.removeItem(USER_STORAGE_KEY);
           } catch {}
         }
-        setLoading(false);
+        if (isMounted) setLoading(false);
       });
 
       // 2. Listen to real-time auth changes
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
         if (!isMounted) return;
         if (session?.user) {
+          if (session.access_token && typeof document !== 'undefined') {
+            document.cookie = `stocksentinel_session=${encodeURIComponent(session.access_token)}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+          }
           const mapped = mapSupabaseUser(session.user);
           setUser(mapped);
           try {
-            localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(mapped));
+            const serverUser = await refreshSession();
+            if (isMounted && serverUser) {
+              setUser(serverUser);
+            }
           } catch {}
         } else {
+          if (typeof document !== 'undefined') {
+            document.cookie = 'stocksentinel_session=; path=/; max-age=0; SameSite=Lax';
+          }
           setUser(null);
           try {
             localStorage.removeItem(USER_STORAGE_KEY);
           } catch {}
         }
-        setLoading(false);
+        if (isMounted) setLoading(false);
       });
 
       return () => {
@@ -111,32 +215,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
     } else {
       // Standalone fallback: verify local server session
-      fetch('/api/auth/session')
-        .then((res) => res.json())
-        .then((data) => {
-          if (!isMounted) return;
-          if (data.user) {
-            setUser(data.user);
-            try {
-              localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data.user));
-            } catch {}
-          } else {
-            try {
-              localStorage.removeItem(USER_STORAGE_KEY);
-            } catch {}
-            setUser(null);
-          }
-        })
-        .catch(() => {})
-        .finally(() => {
+      void (async () => {
+        try {
+          await refreshSession();
+        } finally {
           if (isMounted) setLoading(false);
-        });
+        }
+      })();
 
       return () => {
         isMounted = false;
       };
     }
-  }, []);
+  }, [refreshSession]);
 
   const signInWithEmail = useCallback(async (email: string, password: string): Promise<{ error?: string }> => {
     const supabase = getSupabaseClient();
@@ -144,15 +235,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (supabase) {
       try {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) return { error: error.message };
-        if (data.user) {
-          const mapped = mapSupabaseUser(data.user);
-          setUser(mapped);
-          try {
-            localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(mapped));
-          } catch {}
+        if (!error && data.user) {
+          if (data.session?.access_token && typeof document !== 'undefined') {
+            document.cookie = `stocksentinel_session=${encodeURIComponent(data.session.access_token)}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+          }
+          await refreshSession();
+          return {};
         }
-        return {};
+
+        // If Supabase authentication returned an error, attempt fallback to standalone auth
+        // (supports demo accounts, existing standalone accounts, and local testing)
+        try {
+          const fallbackRes = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+          });
+          const fallbackData = await fallbackRes.json();
+          if (fallbackRes.ok && fallbackData.user) {
+            if (fallbackData.token && typeof document !== 'undefined') {
+              document.cookie = `stocksentinel_session=${encodeURIComponent(fallbackData.token)}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+            }
+            await refreshSession();
+            return {};
+          }
+        } catch {
+          // If fallback fails, surface original error below
+        }
+
+        return { error: error?.message || 'Invalid login credentials.' };
       } catch (err: unknown) {
         return { error: err instanceof Error ? err.message : 'Supabase authentication failed.' };
       }
@@ -171,19 +282,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { error: data.error || 'Failed to sign in.' };
       }
 
-      setUser(data.user);
-      try {
-        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data.user));
-      } catch {}
-
+      if (data.token && typeof document !== 'undefined') {
+        document.cookie = `stocksentinel_session=${encodeURIComponent(data.token)}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+      }
+      await refreshSession();
       return {};
     } catch (err: unknown) {
       return { error: err instanceof Error ? err.message : 'Network error during sign in.' };
     }
-  }, []);
+  }, [refreshSession]);
 
   const signUpWithEmail = useCallback(
-    async (email: string, password: string, name: string, storeName?: string): Promise<{ error?: string }> => {
+    async (
+      email: string,
+      password: string,
+      name: string,
+      storeName?: string
+    ): Promise<{ error?: string; needsEmailConfirmation?: boolean }> => {
       const supabase = getSupabaseClient();
 
       if (supabase) {
@@ -194,18 +309,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             options: {
               data: {
                 full_name: name,
-                store_name: storeName || 'Retail Supercenter',
-                role: 'STORE_MANAGER',
+                store_name: storeName || 'Retail Operations',
               },
             },
           });
           if (error) return { error: error.message };
           if (data.user) {
-            const mapped = mapSupabaseUser(data.user);
-            setUser(mapped);
-            try {
-              localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(mapped));
-            } catch {}
+            if (data.session?.access_token) {
+              if (typeof document !== 'undefined') {
+                document.cookie = `stocksentinel_session=${encodeURIComponent(data.session.access_token)}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+              }
+              await refreshSession();
+              return {};
+            }
+            // Supabase requires email verification before session is issued
+            return { needsEmailConfirmation: true };
           }
           return {};
         } catch (err: unknown) {
@@ -226,20 +344,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return { error: data.error || 'Failed to create account.' };
         }
 
-        setUser(data.user);
-        try {
-          localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data.user));
-        } catch {}
+        if (data.token && typeof document !== 'undefined') {
+          document.cookie = `stocksentinel_session=${encodeURIComponent(data.token)}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+        }
 
+        await refreshSession();
         return {};
       } catch (err: unknown) {
         return { error: err instanceof Error ? err.message : 'Network error during registration.' };
       }
     },
-    []
+    [refreshSession]
   );
 
-  const signInWithGoogle = useCallback(async (): Promise<{ error?: string }> => {
+  const signInWithGoogle = useCallback(async (): Promise<{ error?: string; cancelled?: boolean; redirected?: boolean }> => {
     const supabase = getSupabaseClient();
 
     if (supabase) {
@@ -248,15 +366,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           typeof window !== 'undefined'
             ? window.location.origin
             : process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+        const cleanOrigin = origin.replace(/\/+$/, '');
 
         const { error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: {
-            redirectTo: `${origin}/auth/callback`,
+            redirectTo: `${cleanOrigin}/auth/callback`,
           },
         });
         if (error) return { error: error.message };
-        return {};
+        return { redirected: true };
       } catch (err: unknown) {
         return { error: err instanceof Error ? err.message : 'Supabase Google OAuth initialization failed.' };
       }
@@ -266,7 +385,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // 1. Google Identity Services Popup (no redirect_uri needed, eliminates redirect_uri_mismatch)
     if (window.google?.accounts?.oauth2) {
-      return new Promise<{ error?: string }>((resolve) => {
+      return new Promise<{ error?: string; cancelled?: boolean; redirected?: boolean }>((resolve) => {
         try {
           const tokenClient = window.google!.accounts!.oauth2!.initTokenClient({
             client_id: GOOGLE_CLIENT_ID,
@@ -274,7 +393,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             callback: async (tokenResponse) => {
               if (tokenResponse.error) {
                 if (tokenResponse.error === 'popup_closed_by_user') {
-                  resolve({});
+                  resolve({ cancelled: true });
                   return;
                 }
                 resolve({ error: tokenResponse.error_description || tokenResponse.error });
@@ -305,9 +424,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
                   const data = await res.json();
                   if (data.user) {
-                    localStorage.setItem('stocksentinel_user_profile', JSON.stringify(data.user));
-                    setUser(data.user);
-                    router.push('/dashboard');
+                    await refreshSession();
                     resolve({});
                   } else {
                     resolve({ error: data.error || 'Failed to authenticate Google user.' });
@@ -332,7 +449,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             redirectUri
           )}&response_type=token%20id_token&scope=openid%20email%20profile&nonce=${Date.now()}`;
           window.location.href = oauthUrl;
-          resolve({});
+          resolve({ redirected: true });
         }
       });
     }
@@ -347,10 +464,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     )}&response_type=token%20id_token&scope=openid%20email%20profile&nonce=${Date.now()}`;
     window.location.href = oauthUrl;
 
-    return {};
-  }, [router]);
+    return { redirected: true };
+  }, [refreshSession]);
 
   const signOut = useCallback(async () => {
+    setIsLoggingOut(true);
+    if (typeof document !== 'undefined') {
+      document.cookie = 'stocksentinel_session=; path=/; max-age=0; SameSite=Lax';
+    }
     const supabase = getSupabaseClient();
     if (supabase) {
       try {
@@ -367,8 +488,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         localStorage.removeItem(USER_STORAGE_KEY);
       } catch {}
+      router.push('/');
+      router.refresh();
     }
-  }, []);
+    setTimeout(() => {
+      setIsLoggingOut(false);
+    }, 1200);
+  }, [router]);
 
   const resetPassword = useCallback(async (email: string): Promise<{ error?: string }> => {
     const supabase = getSupabaseClient();
@@ -407,18 +533,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const getAuthHeaders = useCallback(() => getClientAuthHeaders(), []);
+
   const value = useMemo(
     () => ({
       user,
       loading,
+      isLoggingOut,
       isSupabaseAuth,
       signInWithEmail,
       signUpWithEmail,
       signInWithGoogle,
       signOut,
       resetPassword,
+      refreshSession,
+      getAuthHeaders,
     }),
-    [user, loading, isSupabaseAuth, signInWithEmail, signUpWithEmail, signInWithGoogle, signOut, resetPassword]
+    [user, loading, isLoggingOut, isSupabaseAuth, signInWithEmail, signUpWithEmail, signInWithGoogle, signOut, resetPassword, refreshSession, getAuthHeaders]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

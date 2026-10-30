@@ -22,6 +22,10 @@ export const metadata: Metadata = {
     'retail AI',
   ],
   authors: [{ name: 'StockSentinel AI Team' }],
+  icons: {
+    icon: '/images/stocksentinel-icon.png',
+    apple: '/images/stocksentinel-icon.png',
+  },
 };
 
 export const viewport: Viewport = {
@@ -36,8 +40,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} dark h-full antialiased`}>
-      <body className="min-h-full flex flex-col bg-[#0a0e17] text-slate-100 font-sans selection:bg-emerald-500/30 selection:text-emerald-200">
+    <html lang="en" className={`${inter.variable} h-full antialiased`}>
+      <body className="min-h-full flex flex-col bg-slate-50 text-slate-900 font-sans selection:bg-emerald-500/20 selection:text-emerald-900">
         <AuthProvider>{children}</AuthProvider>
         <Script
           src="https://accounts.google.com/gsi/client"

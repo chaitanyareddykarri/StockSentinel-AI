@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getAuthenticatedUser, validateStoreAccess } from '@/lib/auth/serverAuth';
 
 interface AIAnalysisRequest {
   sku: string;
@@ -6,6 +7,7 @@ interface AIAnalysisRequest {
   category: string;
   unitPrice: number;
   storeName: string;
+  storeId?: string;
   recordedStock: number;
   consecutiveZeroDays: number;
   expectedDailySales: number;
@@ -16,13 +18,38 @@ interface AIAnalysisRequest {
 
 export async function POST(request: Request) {
   try {
-    const payload = (await request.json()) as AIAnalysisRequest;
+    const auth = await getAuthenticatedUser(request);
+    if (!auth.success || !auth.user) {
+      return NextResponse.json(
+        { success: false, error: auth.error || 'Authentication required' },
+        { status: auth.status || 401 }
+      );
+    }
+
+    if (auth.user.accessState === 'PENDING_ASSIGNMENT' || auth.user.accessState === 'SUSPENDED') {
+      return NextResponse.json(
+        { success: false, error: 'Your account or company access is suspended or unassigned.' },
+        { status: 403 }
+      );
+    }
+
+    const payload = (await request.json().catch(() => ({}))) as AIAnalysisRequest;
 
     if (!payload.sku || !payload.productName) {
       return NextResponse.json(
         { success: false, error: 'SKU and productName are required' },
         { status: 400 }
       );
+    }
+
+    if (payload.storeId) {
+      const storeCheck = validateStoreAccess(auth.user, payload.storeId);
+      if (!storeCheck.authorized) {
+        return NextResponse.json(
+          { success: false, error: 'Access denied: You are not authorized to analyze data for this store.' },
+          { status: 403 }
+        );
+      }
     }
 
     const rawGeminiKey =

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import crypto from 'crypto';
 import {
   getStores,
   getProducts,
@@ -6,25 +7,40 @@ import {
   getInventorySnapshots,
   getPromotions,
   saveDetectionRun,
+  isValidUuid,
 } from '@/lib/storage';
+import { authorizeRequest } from '@/lib/auth/serverAuth';
 import { runBaselineDetection } from '@/lib/detector';
-import { Alert, DetectionConfig, DetectionRun } from '@/types';
+import { isSameOrAliasedStore } from '@/lib/storeResolver';
+import type { Alert, DetectionConfig, DetectionRun } from '@/types';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
-    const targetStoreId = body.storeId || 'ALL';
+    const requestedStoreId = body.storeId || undefined;
+
+    const auth = await authorizeRequest(request, requestedStoreId);
+    if (!auth.authorized || !auth.user) {
+      return NextResponse.json(
+        { success: false, error: auth.error || 'Authentication required' },
+        { status: auth.status || 401 }
+      );
+    }
+
     const configOverrides: Partial<DetectionConfig> = body.config || {};
 
     const [stores, products, sales, inventory, promotions] = await Promise.all([
-      getStores(),
-      getProducts(),
-      getDailySales(targetStoreId),
-      getInventorySnapshots(targetStoreId),
-      getPromotions(),
+      getStores(auth.user.id, auth.effectiveStoreIds, auth.user.companyId),
+      getProducts(auth.user.id, auth.user.companyId),
+      getDailySales(auth.targetStoreId, undefined, auth.user.id, auth.effectiveStoreIds, auth.user.companyId),
+      getInventorySnapshots(auth.targetStoreId, undefined, auth.user.id, auth.effectiveStoreIds, auth.user.companyId),
+      getPromotions(auth.user.id, auth.effectiveStoreIds, auth.user.companyId),
     ]);
 
-    const filteredStores = targetStoreId === 'ALL' ? stores : stores.filter((s) => s.id === targetStoreId);
+    const filteredStores =
+      auth.targetStoreId && auth.targetStoreId !== 'ALL'
+        ? stores.filter((s) => s.id === auth.targetStoreId || isSameOrAliasedStore(s.id, auth.targetStoreId))
+        : stores;
 
     let engineType: DetectionRun['engine_type'] = 'BASELINE_POISSON';
     let alerts: Alert[] = [];
@@ -80,11 +96,14 @@ export async function POST(request: Request) {
       engineType = 'BASELINE_POISSON';
     }
 
-    const runId = `RUN-${Date.now().toString(36).toUpperCase()}`;
+    const runId = crypto.randomUUID();
     const now = new Date().toISOString();
 
     const finalizedAlerts = alerts.map((alt) => ({
       ...alt,
+      id: isValidUuid(alt.id) ? alt.id : crypto.randomUUID(),
+      user_id: auth.user!.id,
+      company_id: auth.user!.companyId,
       run_id: runId,
     }));
 
@@ -92,8 +111,10 @@ export async function POST(request: Request) {
 
     const runRecord: DetectionRun = {
       id: runId,
+      user_id: auth.user.id,
+      company_id: auth.user.companyId,
       run_date: now,
-      store_id: targetStoreId,
+      store_id: auth.targetStoreId || 'ALL',
       total_skus_analyzed: filteredStores.length * products.length,
       flagged_count: finalizedAlerts.length,
       critical_count: criticalCount,
@@ -109,7 +130,7 @@ export async function POST(request: Request) {
       created_at: now,
     };
 
-    await saveDetectionRun(runRecord, finalizedAlerts);
+    await saveDetectionRun(runRecord, finalizedAlerts, auth.user.id, auth.user.companyId);
 
     return NextResponse.json({
       success: true,

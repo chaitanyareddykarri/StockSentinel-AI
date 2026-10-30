@@ -4,7 +4,7 @@ import { createUser, createSession } from '@/lib/auth/userStore';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { email, password, name, storeName, role } = body;
+    const { email, password, name, storeName } = body;
 
     if (!email || !email.includes('@')) {
       return NextResponse.json({ error: 'A valid email address is required.' }, { status: 400 });
@@ -16,12 +16,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Full name is required.' }, { status: 400 });
     }
 
+    // Security Guarantee: Always enforce server-anchored PENDING_ASSIGNMENT for new self-registrations.
+    // Platform admin, company manager, and store manager roles can never be self-assigned.
     const user = await createUser({
       email,
       password,
       name,
       storeName,
-      role: role || 'STORE_MANAGER',
+      role: 'PENDING_ASSIGNMENT',
       provider: 'email',
     });
 

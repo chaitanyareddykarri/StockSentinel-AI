@@ -1,5 +1,12 @@
 export type RiskCategory = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 
+export type UserAccessState =
+  | 'PLATFORM_ADMIN'
+  | 'COMPANY_MANAGER'
+  | 'STORE_MANAGER'
+  | 'PENDING_ASSIGNMENT'
+  | 'SUSPENDED';
+
 export type AlertStatus = 'OPEN' | 'UNDER_REVIEW' | 'VERIFIED' | 'FALSE_POSITIVE' | 'RESOLVED';
 
 export type VerificationOutcome = 
@@ -12,10 +19,12 @@ export type VerificationOutcome =
 export interface Store {
   id: string;
   user_id?: string;
+  company_id?: string;
   code: string;
   name: string;
   location: string;
   store_type: string;
+  status?: string;
   total_skus?: number;
   created_at: string;
 }
@@ -23,6 +32,7 @@ export interface Store {
 export interface Product {
   id: string;
   user_id?: string;
+  company_id?: string;
   sku: string;
   name: string;
   category: string;
@@ -35,6 +45,7 @@ export interface Product {
 export interface DailySale {
   id: string;
   user_id?: string;
+  company_id?: string;
   store_id: string;
   product_id: string;
   sku: string;
@@ -48,6 +59,7 @@ export interface DailySale {
 export interface InventorySnapshot {
   id: string;
   user_id?: string;
+  company_id?: string;
   store_id: string;
   product_id: string;
   sku: string;
@@ -59,6 +71,7 @@ export interface InventorySnapshot {
 export interface Promotion {
   id: string;
   user_id?: string;
+  company_id?: string;
   store_id: string;
   product_id: string;
   sku: string;
@@ -91,6 +104,7 @@ export interface AlertSignals {
 export interface Alert {
   id: string;
   user_id?: string;
+  company_id?: string;
   run_id: string;
   store_id: string;
   store_name: string;
@@ -123,6 +137,7 @@ export interface Alert {
 export interface AuditLogEntry {
   id: string;
   user_id?: string;
+  company_id?: string;
   alert_id: string;
   previous_status: AlertStatus;
   new_status: AlertStatus;
@@ -136,6 +151,7 @@ export interface AuditLogEntry {
 export interface DetectionRun {
   id: string;
   user_id?: string;
+  company_id?: string;
   run_date: string;
   store_id: string; // or 'ALL'
   total_skus_analyzed: number;
@@ -151,12 +167,19 @@ export interface DetectionRun {
 export interface ImportJob {
   id: string;
   user_id: string;
+  company_id?: string;
   entity_type: 'stores' | 'products' | 'daily_sales' | 'inventory_snapshots' | 'promotions';
   filename: string;
   records_count: number;
   status: 'PENDING' | 'COMPLETED' | 'FAILED';
   errors?: string[];
   created_at: string;
+}
+
+export interface TimeSeriesPoint {
+  date: string;
+  unitsSold: number;
+  onHandUnits: number;
 }
 
 export interface DashboardMetrics {
@@ -169,6 +192,7 @@ export interface DashboardMetrics {
   verifiedCount: number;
   precisionAt20: number;
   lastDetectionRun?: string;
+  timeSeries?: TimeSeriesPoint[];
 }
 
 export interface EvaluationResult {
@@ -181,6 +205,28 @@ export interface EvaluationResult {
   falseNegatives: number;
   totalEvaluated: number;
   averageRankOfPhantoms: number;
+}
+
+export type ChatRole = 'user' | 'assistant';
+
+export interface ChatConversation {
+  id: string;
+  user_id: string;
+  company_id?: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count?: number;
+  last_message?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  conversation_id: string;
+  user_id: string;
+  role: ChatRole;
+  content: string;
+  created_at: string;
 }
 
 declare global {

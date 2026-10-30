@@ -1,19 +1,18 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Navbar } from '@/components/Navbar';
-import { ProtectedRoute } from '@/components/ProtectedRoute';
 import Papa from 'papaparse';
+import { AppShell } from '@/components/AppShell';
+import { useAuth } from '@/context/AuthContext';
 import {
-  FileSpreadsheet,
   Upload,
   Download,
   CheckCircle,
   AlertTriangle,
+  FileCheck,
+  RefreshCw,
   Database,
   ArrowRight,
-  RefreshCw,
-  FileCheck,
 } from 'lucide-react';
 
 type EntityType = 'stores' | 'products' | 'daily_sales' | 'inventory_snapshots' | 'promotions';
@@ -54,9 +53,9 @@ const TEMPLATES: Record<EntityType, TemplateDef> = {
     filename: 'template_daily_sales.csv',
     headers: ['store_id', 'sku', 'date', 'units_sold', 'revenue'],
     sampleData: [
-      { store_id: 'store-001', sku: 'SKU-101', date: '2026-10-15', units_sold: 5, revenue: 24.95 },
-      { store_id: 'store-001', sku: 'SKU-104', date: '2026-10-15', units_sold: 0, revenue: 0.00 },
-      { store_id: 'store-002', sku: 'SKU-104', date: '2026-10-15', units_sold: 6, revenue: 17.94 },
+      { store_id: 'SEA-101', sku: 'SKU-101', date: '2026-10-15', units_sold: 5, revenue: 24.95 },
+      { store_id: 'SEA-101', sku: 'SKU-104', date: '2026-10-15', units_sold: 0, revenue: 0.00 },
+      { store_id: 'BEL-204', sku: 'SKU-104', date: '2026-10-15', units_sold: 6, revenue: 17.94 },
     ],
     description: 'Daily transaction sales records per SKU and store.',
   },
@@ -65,9 +64,9 @@ const TEMPLATES: Record<EntityType, TemplateDef> = {
     filename: 'template_inventory_snapshots.csv',
     headers: ['store_id', 'sku', 'date', 'on_hand_stock'],
     sampleData: [
-      { store_id: 'store-001', sku: 'SKU-101', date: '2026-10-15', on_hand_stock: 18 },
-      { store_id: 'store-001', sku: 'SKU-104', date: '2026-10-15', on_hand_stock: 26 },
-      { store_id: 'store-002', sku: 'SKU-104', date: '2026-10-15', on_hand_stock: 14 },
+      { store_id: 'SEA-101', sku: 'SKU-101', date: '2026-10-15', on_hand_stock: 18 },
+      { store_id: 'SEA-101', sku: 'SKU-104', date: '2026-10-15', on_hand_stock: 26 },
+      { store_id: 'BEL-204', sku: 'SKU-104', date: '2026-10-15', on_hand_stock: 14 },
     ],
     description: 'Recorded system on-hand inventory levels per SKU and store.',
   },
@@ -76,14 +75,16 @@ const TEMPLATES: Record<EntityType, TemplateDef> = {
     filename: 'template_promotions.csv',
     headers: ['store_id', 'sku', 'start_date', 'end_date', 'discount_pct', 'promo_type'],
     sampleData: [
-      { store_id: 'store-001', sku: 'SKU-104', start_date: '2026-10-10', end_date: '2026-10-20', discount_pct: 20, promo_type: 'FEATURE' },
-      { store_id: 'store-002', sku: 'SKU-101', start_date: '2026-10-12', end_date: '2026-10-22', discount_pct: 15, promo_type: 'ENDCAP' },
+      { store_id: 'SEA-101', sku: 'SKU-104', start_date: '2026-10-10', end_date: '2026-10-20', discount_pct: 20, promo_type: 'FEATURE' },
+      { store_id: 'BEL-204', sku: 'SKU-101', start_date: '2026-10-12', end_date: '2026-10-22', discount_pct: 15, promo_type: 'ENDCAP' },
     ],
     description: 'Active store circular, feature, and promotional discounts.',
   },
 };
 
 export default function ImportPage() {
+  const { user } = useAuth();
+  const isStoreManager = user?.accessState === 'STORE_MANAGER';
   const [selectedEntity, setSelectedEntity] = useState<EntityType>('daily_sales');
   const [parsedData, setParsedData] = useState<Record<string, unknown>[]>([]);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
@@ -171,8 +172,10 @@ export default function ImportPage() {
   };
 
   const handleCommitImport = async () => {
-    if (parsedData.length === 0) return;
+    if (parsedData.length === 0 || validationErrors.length > 0) return;
+
     setIsUploading(true);
+    setImportResult(null);
 
     try {
       const res = await fetch('/api/import', {
@@ -186,12 +189,14 @@ export default function ImportPage() {
 
       const data = await res.json();
       if (data.success) {
-        setImportResult({ inserted: data.inserted, errors: data.rowErrors || [] });
+        setImportResult({ inserted: data.inserted, errors: [] });
+        setParsedData([]);
+        setFileDetails(null);
       } else {
-        setImportResult({ inserted: 0, errors: [data.error || 'Import failed'] });
+        setImportResult({ inserted: 0, errors: data.errors || [data.error || 'Import failed.'] });
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Import failed';
+      const msg = err instanceof Error ? err.message : 'Network error during upload.';
       setImportResult({ inserted: 0, errors: [msg] });
     } finally {
       setIsUploading(false);
@@ -199,90 +204,90 @@ export default function ImportPage() {
   };
 
   return (
-    <ProtectedRoute>
-      <div className="min-h-screen bg-[#0a0e17] text-slate-100 flex flex-col">
-        <Navbar />
-
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        {/* Header */}
+    <AppShell
+      title="Retail Data Ingestion & CSV Import"
+      subtitle="Import store sales, inventory, products, and promotion datasets with full schema validation and database persistence."
+    >
+      {/* Entity Selection Tabs */}
+      <section className="space-y-4">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight flex items-center space-x-2.5">
-            <FileSpreadsheet className="w-6 h-6 text-emerald-400" />
-            <span>Retail Data Ingestion & CSV Import</span>
-          </h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Import sales, inventory, products, and promotion datasets with full client-side validation and database persistence.
-          </p>
-        </div>
-
-        {/* Entity Tabs */}
-        <div className="flex flex-wrap gap-2 border-b border-white/10 pb-3">
-          {(Object.keys(TEMPLATES) as EntityType[]).map((key) => {
-            const def = TEMPLATES[key];
-            const isSelected = selectedEntity === key;
-            return (
-              <button
-                key={key}
-                onClick={() => {
-                  setSelectedEntity(key);
-                  setParsedData([]);
-                  setValidationErrors([]);
-                  setFileDetails(null);
-                  setImportResult(null);
-                }}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  isSelected
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
-                    : 'bg-slate-900/60 text-slate-400 border border-white/5 hover:text-white hover:bg-slate-800'
-                }`}
-              >
-                {def.name}
-              </button>
-            );
-          })}
+          <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-500">Select Dataset Type</h2>
+          <div className="flex flex-wrap gap-2 pt-2">
+            {(Object.keys(TEMPLATES) as EntityType[]).map((key) => {
+              const def = TEMPLATES[key];
+              const isSelected = selectedEntity === key;
+              const isRestrictedForRole = isStoreManager && (key === 'stores' || key === 'products');
+              return (
+                <button
+                  key={key}
+                  disabled={isRestrictedForRole}
+                  onClick={() => {
+                    setSelectedEntity(key);
+                    setParsedData([]);
+                    setValidationErrors([]);
+                    setFileDetails(null);
+                    setImportResult(null);
+                  }}
+                  title={isRestrictedForRole ? 'Managed exclusively by Company Managers' : undefined}
+                  className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    isRestrictedForRole
+                      ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
+                      : isSelected
+                      ? 'bg-emerald-50 text-emerald-900 border border-emerald-300 shadow-2xs'
+                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  {def.name}
+                  {isRestrictedForRole && <span className="ml-1 text-[10px] text-slate-400 font-normal">(Company Mgr)</span>}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Template & Upload Section */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
           {/* Template Info Card */}
-          <div className="glass-panel p-5 rounded-2xl border border-white/10 space-y-4">
-            <div>
-              <h3 className="text-sm font-bold text-white flex items-center space-x-2">
-                <Database className="w-4 h-4 text-emerald-400" />
-                <span>Entity: {currentTemplate.name}</span>
-              </h3>
-              <p className="text-xs text-slate-400 mt-1">{currentTemplate.description}</p>
-            </div>
+          <div className="bg-white/95 rounded-2xl border border-slate-200/80 p-5 shadow-xs space-y-4 flex flex-col justify-between">
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                  <Database className="w-4 h-4 text-emerald-700" />
+                  <span>Schema: {currentTemplate.name}</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">{currentTemplate.description}</p>
+              </div>
 
-            <div>
-              <p className="text-xs font-semibold text-slate-300 mb-2">Required Columns:</p>
-              <div className="flex flex-wrap gap-1.5">
-                {currentTemplate.headers.map((h) => (
-                  <span
-                    key={h}
-                    className="font-mono text-[11px] bg-slate-950 px-2 py-0.5 rounded text-emerald-400 border border-white/5"
-                  >
-                    {h}
-                  </span>
-                ))}
+              <div>
+                <p className="text-xs font-semibold text-slate-700 mb-1.5">Required Headers:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {currentTemplate.headers.map((h) => (
+                    <span
+                      key={h}
+                      className="font-mono text-[11px] bg-slate-100 px-2 py-0.5 rounded text-emerald-800 border border-slate-200 font-semibold"
+                    >
+                      {h}
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
 
             <button
               onClick={downloadTemplate}
-              className="w-full flex items-center justify-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10 transition-colors cursor-pointer"
+              className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
             >
-              <Download className="w-4 h-4 text-emerald-400" />
+              <Download className="w-4 h-4 text-emerald-700" />
               <span>Download CSV Template</span>
             </button>
           </div>
 
           {/* Upload Dropzone */}
-          <div className="glass-panel p-5 rounded-2xl border border-white/10 md:col-span-2 flex flex-col justify-center">
-            <label className="border-2 border-dashed border-white/15 hover:border-emerald-500/50 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-colors bg-slate-900/30">
-              <Upload className="w-8 h-8 text-emerald-400 mb-2" />
-              <p className="text-sm font-semibold text-white">Click or drag & drop CSV file here</p>
-              <p className="text-xs text-slate-400 mt-1">Must match {currentTemplate.name} schema headers</p>
+          <div className="bg-white/95 rounded-2xl border border-slate-200/80 p-5 shadow-xs md:col-span-2 flex flex-col justify-center">
+            <label className="border-2 border-dashed border-emerald-300 hover:border-emerald-500 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-colors bg-emerald-50/20">
+              <Upload className="w-8 h-8 text-emerald-700 mb-2" />
+              <p className="text-sm font-semibold text-slate-900">Click or drag & drop CSV file here</p>
+              <p className="text-xs text-slate-500 mt-1">Must conform to the {currentTemplate.name} schema headers</p>
               <input
                 type="file"
                 accept=".csv"
@@ -292,9 +297,9 @@ export default function ImportPage() {
             </label>
 
             {fileDetails && (
-              <div className="mt-3 flex items-center justify-between text-xs text-slate-300 bg-slate-900/60 p-2.5 rounded-lg border border-white/5">
-                <span className="font-mono">{fileDetails.name}</span>
-                <span className="text-slate-400">{(fileDetails.size / 1024).toFixed(1)} KB</span>
+              <div className="mt-3 flex items-center justify-between text-xs text-slate-700 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                <span className="font-mono font-medium">{fileDetails.name}</span>
+                <span className="text-slate-500">{(fileDetails.size / 1024).toFixed(1)} KB</span>
               </div>
             )}
           </div>
@@ -302,9 +307,9 @@ export default function ImportPage() {
 
         {/* Validation Errors Box */}
         {validationErrors.length > 0 && (
-          <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-300 space-y-1">
-            <div className="flex items-center space-x-2 font-bold text-rose-400">
-              <AlertTriangle className="w-4 h-4" />
+          <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 space-y-1">
+            <div className="flex items-center space-x-2 font-bold text-rose-800">
+              <AlertTriangle className="w-4 h-4 text-rose-700" />
               <span>Validation Issues Detected ({validationErrors.length})</span>
             </div>
             <ul className="list-disc list-inside space-y-0.5 text-[11px] pt-1">
@@ -323,12 +328,12 @@ export default function ImportPage() {
           <div
             className={`p-4 rounded-xl border text-xs ${
               importResult.inserted > 0
-                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                : 'bg-rose-50 border-rose-200 text-rose-900'
             }`}
           >
             <div className="flex items-center space-x-2 font-bold text-sm">
-              <CheckCircle className="w-4 h-4" />
+              <CheckCircle className="w-4 h-4 text-emerald-700" />
               <span>
                 {importResult.inserted > 0
                   ? `Successfully ingested ${importResult.inserted} records into persistent storage!`
@@ -336,7 +341,7 @@ export default function ImportPage() {
               </span>
             </div>
             {importResult.errors.length > 0 && (
-              <ul className="list-disc list-inside space-y-0.5 text-[11px] pt-1 text-slate-400">
+              <ul className="list-disc list-inside space-y-0.5 text-[11px] pt-1 text-slate-600">
                 {importResult.errors.map((e, idx) => (
                   <li key={idx}>{e}</li>
                 ))}
@@ -347,20 +352,20 @@ export default function ImportPage() {
 
         {/* Data Preview Table */}
         {parsedData.length > 0 && (
-          <div className="glass-panel rounded-2xl overflow-hidden border border-white/10 space-y-3 p-5">
+          <div className="bg-white/95 rounded-2xl overflow-hidden border border-slate-200/80 space-y-3 p-5 shadow-xs">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-bold text-white flex items-center space-x-2">
-                  <FileCheck className="w-4 h-4 text-emerald-400" />
+                <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                  <FileCheck className="w-4 h-4 text-emerald-700" />
                   <span>Preview Parsed Records ({parsedData.length} total)</span>
                 </h3>
-                <p className="text-xs text-slate-400">Showing first 10 rows for verification before commit</p>
+                <p className="text-xs text-slate-500">Showing first 10 rows for validation before database commit</p>
               </div>
 
               <button
                 onClick={handleCommitImport}
-                disabled={isUploading}
-                className="flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 disabled:opacity-50 transition-all cursor-pointer"
+                disabled={isUploading || validationErrors.length > 0}
+                className="flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-[#064e3b] hover:bg-[#047857] text-white shadow-xs disabled:opacity-50 transition-all cursor-pointer"
               >
                 {isUploading ? (
                   <>
@@ -376,9 +381,9 @@ export default function ImportPage() {
               </button>
             </div>
 
-            <div className="overflow-x-auto border border-white/5 rounded-xl">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950 text-slate-400 uppercase text-[11px]">
+            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+              <table className="w-full text-left text-xs text-slate-700">
+                <thead className="bg-slate-50 text-slate-600 font-semibold uppercase text-[11px] border-b border-slate-200">
                   <tr>
                     <th className="py-2.5 px-3">#</th>
                     {currentTemplate.headers.map((h) => (
@@ -388,10 +393,10 @@ export default function ImportPage() {
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/5 font-mono">
+                <tbody className="divide-y divide-slate-100 font-mono">
                   {parsedData.slice(0, 10).map((row, idx) => (
-                    <tr key={idx} className="hover:bg-slate-900/40">
-                      <td className="py-2 px-3 text-slate-500">{idx + 1}</td>
+                    <tr key={idx} className="hover:bg-slate-50">
+                      <td className="py-2 px-3 text-slate-400">{idx + 1}</td>
                       {currentTemplate.headers.map((h) => (
                         <td key={h} className="py-2 px-3 whitespace-nowrap">
                           {row[h] !== undefined ? String(row[h]) : '—'}
@@ -404,8 +409,7 @@ export default function ImportPage() {
             </div>
           </div>
         )}
-      </main>
-    </div>
-  </ProtectedRoute>
+      </section>
+    </AppShell>
   );
 }

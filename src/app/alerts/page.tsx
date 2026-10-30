@@ -1,23 +1,35 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Navbar } from '@/components/Navbar';
+import Link from 'next/link';
+import { AppShell } from '@/components/AppShell';
 import { AlertTable } from '@/components/AlertTable';
 import { AlertDetailModal } from '@/components/AlertDetailModal';
-import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { Alert, Store } from '@/types';
-import { BellRing } from 'lucide-react';
-import Link from 'next/link';
+import {
+  BellRing,
+  AlertTriangle,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  Package,
+  ArrowRight,
+} from 'lucide-react';
 
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [selectedStore, setSelectedStore] = useState<string>('ALL');
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const fetchAlerts = useCallback(async () => {
     try {
+      setFetchError(null);
       const res = await fetch('/api/alerts');
+      if (!res.ok) throw new Error('Failed to fetch alerts.');
       const data = await res.json();
       if (data.alerts) {
         setAlerts(data.alerts);
@@ -38,6 +50,9 @@ export default function AlertsPage() {
       }
     } catch (e) {
       console.error('Failed to load alerts:', e);
+      setFetchError('Failed to retrieve current alerts queue. Please check your connection.');
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -46,6 +61,7 @@ export default function AlertsPage() {
     void (async () => {
       try {
         const res = await fetch('/api/alerts');
+        if (!res.ok) throw new Error('Failed to fetch alerts.');
         const data = await res.json();
         if (active && data.alerts) {
           setAlerts(data.alerts);
@@ -66,6 +82,9 @@ export default function AlertsPage() {
         }
       } catch (e) {
         console.error('Failed to load alerts:', e);
+        if (active) setFetchError('Failed to load alerts.');
+      } finally {
+        if (active) setLoading(false);
       }
     })();
 
@@ -85,68 +104,138 @@ export default function AlertsPage() {
   const verifiedCount = alerts.filter((a) => a.status === 'VERIFIED').length;
   const falsePositiveCount = alerts.filter((a) => a.status === 'FALSE_POSITIVE').length;
 
+  const isDemoData = stores.some((s) => s.id === 'store-001' || s.id === 'store-002' || s.id === 'store-003');
+
   return (
-    <ProtectedRoute>
-      <div className="min-h-screen bg-[#0a0e17] text-slate-100 flex flex-col">
-        <Navbar />
+    <AppShell
+      title="Alerts & Physical Walk Triage"
+      subtitle="Ranked list of suspicious product-store pairs. Conduct shelf walks and log verification outcomes."
+      stores={stores}
+      selectedStore={selectedStore}
+      onStoreChange={setSelectedStore}
+      isDemoData={isDemoData}
+      openAlertsCount={openCount + underReviewCount}
+    >
+      {/* Error Banner */}
+      {fetchError && (
+        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center justify-between shadow-2xs">
+          <div className="flex items-center space-x-2">
+            <AlertCircle className="w-4 h-4 text-rose-700 shrink-0" />
+            <span>{fetchError}</span>
+          </div>
+          <button
+            onClick={() => fetchAlerts()}
+            className="font-bold underline hover:text-rose-950 cursor-pointer"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-          {/* Page Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* Header Introduction */}
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-base font-extrabold text-slate-900 tracking-tight flex items-center space-x-2">
+            <BellRing className="w-5 h-5 text-emerald-700" />
+            <span>Operational Discrepancy Queue</span>
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Statistical demand anomalies ranked by Poisson zero-probability. Store associates use this list during morning pre-opening shelf walks to verify physical facings.
+          </p>
+        </div>
+
+        {/* 4-Card Status Summary Grid */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white/95 rounded-2xl border border-rose-200/80 p-4 shadow-xs flex items-center justify-between">
             <div>
-              <div className="flex items-center space-x-2 text-xs text-slate-400 mb-1">
-                <Link href="/dashboard" className="hover:text-emerald-400 transition-colors">
-                  Dashboard
-                </Link>
-                <span>/</span>
-                <span className="text-slate-200">Alerts & Physical Walk</span>
-              </div>
-              <h1 className="text-2xl font-bold text-white tracking-tight flex items-center space-x-2.5">
-                <BellRing className="w-6 h-6 text-emerald-400" />
-                <span>Prioritized Alerts & Verification Workflow</span>
-              </h1>
-              <p className="text-xs text-slate-400 mt-1">
-                Ranked list of suspicious product-store pairs. Conduct shelf walks and log verification outcomes.
-              </p>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-rose-700">Open Action Required</p>
+              <h3 className="text-2xl font-extrabold text-slate-900 mt-1">{loading ? '...' : openCount}</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">Unworked shelf anomalies</p>
             </div>
-
-            {/* Status Quick Counters */}
-            <div className="flex items-center space-x-2 text-xs">
-              <span className="px-3 py-1 rounded-lg bg-rose-500/10 text-rose-300 border border-rose-500/20 font-semibold">
-                {openCount} Open
-              </span>
-              <span className="px-3 py-1 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/20 font-semibold">
-                {underReviewCount} Under Review
-              </span>
-              <span className="px-3 py-1 rounded-lg bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 font-semibold">
-                {verifiedCount} Verified
-              </span>
-              <span className="px-3 py-1 rounded-lg bg-slate-500/10 text-slate-300 border border-slate-500/20 font-semibold">
-                {falsePositiveCount} False Positives
-              </span>
+            <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700">
+              <AlertTriangle className="w-5 h-5" />
             </div>
           </div>
 
-          {/* Alerts Table */}
-          <AlertTable
-            alerts={alerts}
-            stores={stores}
-            selectedStore={selectedStore}
-            onStoreChange={setSelectedStore}
-            onSelectAlert={(alt) => setSelectedAlert(alt)}
-            title="All Flagged Candidates (Ranked by Anomaly Severity)"
-          />
-        </main>
+          <div className="bg-white/95 rounded-2xl border border-amber-200/80 p-4 shadow-xs flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-amber-700">Under Review</p>
+              <h3 className="text-2xl font-extrabold text-slate-900 mt-1">{loading ? '...' : underReviewCount}</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">Walk in progress or scheduled</p>
+            </div>
+            <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-700">
+              <Clock className="w-5 h-5" />
+            </div>
+          </div>
 
-        {/* Investigation Modal */}
-        {selectedAlert && (
-          <AlertDetailModal
-            alert={selectedAlert}
-            onClose={() => setSelectedAlert(null)}
-            onAlertUpdated={handleAlertUpdated}
-          />
-        )}
-      </div>
-    </ProtectedRoute>
+          <div className="bg-white/95 rounded-2xl border border-emerald-200/80 p-4 shadow-xs flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">Confirmed Phantoms</p>
+              <h3 className="text-2xl font-extrabold text-slate-900 mt-1">{loading ? '...' : verifiedCount}</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">Verified missing / displaced</p>
+            </div>
+            <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+          </div>
+
+          <div className="bg-white/95 rounded-2xl border border-slate-200/80 p-4 shadow-xs flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">False Positives</p>
+              <h3 className="text-2xl font-extrabold text-slate-900 mt-1">{loading ? '...' : falsePositiveCount}</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">Physically in-stock confirmed</p>
+            </div>
+            <div className="p-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-600">
+              <XCircle className="w-5 h-5" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Main Alert Table */}
+      <section aria-label="Alerts Table">
+        <AlertTable
+          alerts={alerts}
+          stores={stores}
+          selectedStore={selectedStore}
+          onStoreChange={setSelectedStore}
+          onSelectAlert={(alt) => setSelectedAlert(alt)}
+          title="All Flagged Candidates (Ranked by Anomaly Severity)"
+        />
+      </section>
+
+      {/* Empty State Banner if 0 alerts */}
+      {!loading && alerts.length === 0 && (
+        <section className="bg-white/95 p-8 rounded-3xl border-2 border-dashed border-emerald-300 text-center space-y-4 shadow-xs">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-800 mx-auto">
+            <Package className="w-7 h-7" />
+          </div>
+          <div className="max-w-md mx-auto space-y-1.5">
+            <h3 className="text-base font-bold text-slate-900">
+              No Alerts Currently Active
+            </h3>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              All store inventory is currently aligned with scan velocity, or no transaction logs have been ingested yet.
+            </p>
+          </div>
+          <Link
+            href="/import"
+            className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-[#064e3b] text-white hover:bg-[#047857]"
+          >
+            <span>Import Store Data</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </section>
+      )}
+
+      {/* Shelf Walk Verification Modal */}
+      {selectedAlert && (
+        <AlertDetailModal
+          alert={selectedAlert}
+          onClose={() => setSelectedAlert(null)}
+          onAlertUpdated={handleAlertUpdated}
+        />
+      )}
+    </AppShell>
   );
 }

@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import {
-  ShieldAlert,
   Mail,
   ArrowRight,
   RefreshCw,
@@ -43,43 +42,48 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0e17] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-emerald-50/25 to-slate-50 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 selection:bg-emerald-500/20 selection:text-emerald-900">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center space-y-3">
         <Link href="/" className="inline-flex items-center space-x-2.5 group">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 group-hover:scale-105 transition-transform">
-            <ShieldAlert className="w-7 h-7 text-white" />
+          <div className="w-20 h-20 rounded-2xl overflow-hidden bg-slate-950 p-1.5 flex items-center justify-center shadow-md shadow-emerald-950/20 mx-auto border border-emerald-900/30 group-hover:scale-102 transition-transform">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/images/stocksentinel-logo.png"
+              alt="StockSentinel AI Logo"
+              className="w-full h-full object-contain"
+            />
           </div>
         </Link>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
           Reset Your Password
         </h1>
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-slate-500">
           We&apos;ll send a secure password reset link to your registered email address.
         </p>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="glass-panel py-8 px-6 sm:px-10 rounded-2xl border border-white/10 shadow-2xl space-y-6">
+        <div className="glass-panel py-8 px-6 sm:px-10 rounded-3xl border border-emerald-100/80 bg-white/95 shadow-xl space-y-6">
           {errorMessage && (
-            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start space-x-2">
-              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-rose-400" />
+            <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start space-x-2">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-rose-600" />
               <span>{errorMessage}</span>
             </div>
           )}
 
           {submitted ? (
             <div className="space-y-4 text-center">
-              <div className="w-12 h-12 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center mx-auto text-emerald-400">
+              <div className="w-12 h-12 rounded-full bg-emerald-100 border border-emerald-200 flex items-center justify-center mx-auto text-[#064e3b]">
                 <CheckCircle2 className="w-6 h-6" />
               </div>
-              <h3 className="text-base font-bold text-white">Reset Link Sent</h3>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                If an account exists for <span className="text-emerald-400 font-mono font-semibold">{email}</span>, you will receive an email with instructions to reset your password.
+              <h3 className="text-base font-bold text-slate-900">Reset Link Sent</h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                If an account exists for <span className="text-[#064e3b] font-mono font-semibold">{email}</span>, you will receive an email with instructions to reset your password.
               </p>
               <div className="pt-2">
                 <Link
                   href="/login"
-                  className="inline-flex items-center space-x-2 text-xs font-semibold text-emerald-400 hover:text-emerald-300 transition-colors"
+                  className="inline-flex items-center space-x-2 text-xs font-semibold text-[#064e3b] hover:text-emerald-700 transition-colors"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
                   <span>Return to Sign In</span>
@@ -89,18 +93,19 @@ export default function ForgotPasswordPage() {
           ) : (
             <form className="space-y-4" onSubmit={handleSubmit}>
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Registered Email Address
                 </label>
                 <div className="relative">
-                  <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                  <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                   <input
                     type="email"
                     required
                     placeholder="name@company.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-slate-950 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                    disabled={loading}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all disabled:opacity-50"
                   />
                 </div>
               </div>
@@ -108,11 +113,11 @@ export default function ForgotPasswordPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex items-center justify-center space-x-2 py-2.5 rounded-xl text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/25 disabled:opacity-50 transition-all cursor-pointer"
+                className="w-full flex items-center justify-center space-x-2 py-2.5 rounded-xl text-xs font-semibold bg-[#064e3b] hover:bg-[#065f46] text-white shadow-md shadow-emerald-900/15 disabled:opacity-50 transition-all cursor-pointer"
               >
                 {loading ? (
                   <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
                     <span>Sending Reset Link...</span>
                   </>
                 ) : (
@@ -126,7 +131,7 @@ export default function ForgotPasswordPage() {
               <div className="pt-2 text-center text-xs">
                 <Link
                   href="/login"
-                  className="inline-flex items-center space-x-1.5 text-slate-400 hover:text-white transition-colors"
+                  className="inline-flex items-center space-x-1.5 text-slate-500 hover:text-slate-800 transition-colors"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
                   <span>Back to Sign In</span>

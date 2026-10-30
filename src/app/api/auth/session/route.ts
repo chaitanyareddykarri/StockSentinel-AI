@@ -1,39 +1,51 @@
 import { NextResponse } from 'next/server';
-import { verifySession } from '@/lib/auth/userStore';
+import { getAuthenticatedUser } from '@/lib/auth/serverAuth';
 
 export async function GET(request: Request) {
   try {
-    // Check Authorization header or Cookie
-    const authHeader = request.headers.get('authorization');
-    let token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+    const auth = await getAuthenticatedUser(request);
+    if (!auth.success || !auth.user) {
+      return NextResponse.json({ user: null });
+    }
 
-    if (!token) {
-      const cookieHeader = request.headers.get('cookie') || '';
-      const match = cookieHeader.match(/stocksentinel_session=([^;]+)/);
-      if (match) {
-        token = match[1];
+    const response = NextResponse.json({
+      user: {
+        id: auth.user.id,
+        email: auth.user.email,
+        name: auth.user.name,
+        accessState: auth.user.accessState,
+        role: auth.user.role,
+        companyId: auth.user.companyId,
+        companyName: auth.user.companyName,
+        companySlug: auth.user.companySlug,
+        companyStatus: auth.user.companyStatus,
+        assignedStoreId: auth.user.assignedStoreId,
+        assignedStoreName: auth.user.assignedStoreName,
+        storeName: auth.user.assignedStoreName || auth.user.storeName,
+        accessibleStoreIds: auth.user.accessibleStoreIds,
+        avatarUrl: auth.user.avatarUrl,
+        authMode: auth.user.authMode,
+        isDurable: auth.user.isDurable,
+      },
+    });
+
+    // If verified via Bearer token, sync into stocksentinel_session cookie for subsequent browser requests
+    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization');
+    if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
+      const bearer = authHeader.substring(7).trim();
+      if (bearer) {
+        response.cookies.set({
+          name: 'stocksentinel_session',
+          value: bearer,
+          httpOnly: false,
+          sameSite: 'lax',
+          path: '/',
+          maxAge: 7 * 24 * 60 * 60,
+        });
       }
     }
 
-    if (!token) {
-      return NextResponse.json({ user: null });
-    }
-
-    const user = await verifySession(token);
-    if (!user) {
-      return NextResponse.json({ user: null });
-    }
-
-    return NextResponse.json({
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        storeName: user.storeName,
-        role: user.role,
-        avatarUrl: user.avatarUrl,
-      },
-    });
+    return response;
   } catch {
     return NextResponse.json({ user: null });
   }

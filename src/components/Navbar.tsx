@@ -2,10 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import {
-  ShieldAlert,
   LayoutDashboard,
   BellRing,
   FileSpreadsheet,
@@ -27,7 +26,6 @@ interface NavbarProps {
 
 export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const { user, signOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isSupabase, setIsSupabase] = useState(false);
@@ -45,7 +43,6 @@ export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
 
   const handleSignOut = async () => {
     await signOut();
-    router.push('/login');
   };
 
   const navLinks = [
@@ -57,29 +54,34 @@ export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
   ];
 
   return (
-    <header className="sticky top-0 z-40 w-full glass-panel border-b border-white/10 bg-slate-950/80 backdrop-blur-md">
+    <header className="sticky top-0 z-40 w-full bg-white/90 backdrop-blur-md border-b border-emerald-900/10 shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Brand Logo */}
           <div className="flex items-center space-x-3">
-            <Link href={user ? '/dashboard' : '/'} className="flex items-center space-x-2 group">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 group-hover:scale-105 transition-transform">
-                <ShieldAlert className="w-6 h-6 text-white" />
+            <Link href={user ? '/dashboard' : '/'} className="flex items-center space-x-2.5 group">
+              <div className="w-10 h-10 rounded-xl overflow-hidden bg-[#064e3b] p-0.5 flex items-center justify-center shadow-xs border border-emerald-700/30 group-hover:scale-105 transition-transform">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/images/stocksentinel-logo.png"
+                  alt="StockSentinel AI Logo"
+                  className="w-full h-full object-contain"
+                />
               </div>
               <div>
-                <div className="flex items-center space-x-2">
-                  <span className="font-bold text-lg text-white tracking-tight">StockSentinel</span>
-                  <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                <div className="flex items-center space-x-1.5">
+                  <span className="font-bold text-lg text-slate-900 tracking-tight">StockSentinel</span>
+                  <span className="text-[11px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-600/25">
                     AI
                   </span>
                 </div>
-                <p className="text-[10px] text-slate-400 font-medium">Phantom Stock-Out Intelligence</p>
+                <p className="text-[10px] text-slate-500 font-medium">Phantom Stock-Out Intelligence</p>
               </div>
             </Link>
           </div>
 
           {/* Desktop Nav Links */}
-          <nav className="hidden md:flex items-center space-x-1 lg:space-x-2">
+          <nav className="hidden md:flex items-center space-x-1 lg:space-x-1.5">
             {navLinks.map((link) => {
               const Icon = link.icon;
               const isActive = pathname === link.href;
@@ -87,13 +89,13 @@ export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                     isActive
-                      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shadow-sm'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                      ? 'bg-emerald-50 text-emerald-900 border border-emerald-600/25 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
+                  <Icon className="w-4 h-4 text-emerald-700" />
                   <span>{link.label}</span>
                 </Link>
               );
@@ -104,20 +106,16 @@ export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
           <div className="hidden sm:flex items-center space-x-3">
             {/* DB Status Badge */}
             <div
-              className={`flex items-center space-x-1.5 text-xs px-2.5 py-1 rounded-full border ${
-                isSupabase
-                  ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
-                  : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
-              }`}
+              className="flex items-center space-x-1.5 text-xs px-2.5 py-1 rounded-full border bg-emerald-50/80 text-emerald-900 border-emerald-200/90 shadow-2xs"
               title={
                 isSupabase
-                  ? 'Connected to persistent Supabase PostgreSQL'
-                  : 'Production Database Connected'
+                  ? 'Connected to persistent Supabase PostgreSQL database'
+                  : 'Operating in persistent local storage mode'
               }
             >
-              <Database className="w-3.5 h-3.5" />
-              <span className="font-medium">
-                {isSupabase ? 'Supabase DB' : 'Database Active'}
+              <Database className="w-3.5 h-3.5 text-emerald-700" />
+              <span className="font-medium text-[11px]">
+                {isSupabase ? 'Supabase PostgreSQL' : 'Data Store Active'}
               </span>
             </div>
 
@@ -126,12 +124,13 @@ export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
               <button
                 onClick={onRunDetection}
                 disabled={isRunningDetection}
-                className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-md shadow-emerald-500/20 disabled:opacity-50 transition-all cursor-pointer"
+                className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[#064e3b] hover:bg-[#047857] text-white shadow-xs disabled:opacity-50 transition-all cursor-pointer"
+                title="Execute statistical demand anomaly detection across active stores"
               >
                 {isRunningDetection ? (
                   <>
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Analyzing...</span>
+                    <span>Analyzing POS...</span>
                   </>
                 ) : (
                   <>
@@ -144,16 +143,16 @@ export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
 
             {/* User Profile / Auth State */}
             {user ? (
-              <div className="flex items-center space-x-2.5 pl-2.5 border-l border-white/10">
+              <div className="flex items-center space-x-2.5 pl-2.5 border-l border-slate-200">
                 <div className="flex items-center space-x-2">
-                  <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <div className="w-8 h-8 rounded-full bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-800 font-bold">
                     <UserIcon className="w-4 h-4" />
                   </div>
                   <div className="hidden lg:flex flex-col text-left">
-                    <span className="text-xs font-medium text-slate-200 truncate max-w-[110px]">
+                    <span className="text-xs font-semibold text-slate-800 truncate max-w-[120px]">
                       {user.name || user.email.split('@')[0]}
                     </span>
-                    <span className="text-[10px] text-slate-400">
+                    <span className="text-[10px] text-slate-500 font-medium">
                       {user.storeName || user.role || 'Associate'}
                     </span>
                   </div>
@@ -162,22 +161,22 @@ export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
                 <button
                   onClick={handleSignOut}
                   title="Sign out of StockSentinel AI"
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                 >
                   <LogOut className="w-4 h-4" />
                 </button>
               </div>
             ) : (
-              <div className="flex items-center space-x-2 pl-2 border-l border-white/10">
+              <div className="flex items-center space-x-2 pl-2 border-l border-slate-200">
                 <Link
                   href="/login"
-                  className="text-xs font-medium text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg hover:bg-slate-800 transition-colors"
+                  className="text-xs font-semibold text-slate-600 hover:text-slate-900 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 transition-colors"
                 >
                   Sign In
                 </Link>
                 <Link
                   href="/signup"
-                  className="text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg transition-colors shadow-sm shadow-emerald-600/30"
+                  className="text-xs font-semibold bg-[#064e3b] hover:bg-[#047857] text-white px-3 py-1.5 rounded-lg transition-colors shadow-xs"
                 >
                   Sign Up
                 </Link>
@@ -189,7 +188,8 @@ export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
           <div className="flex md:hidden items-center space-x-2">
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800"
+              aria-label="Toggle navigation menu"
+              className="p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer"
             >
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
@@ -199,7 +199,7 @@ export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
 
       {/* Mobile Drawer */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-white/10 bg-slate-950/95 px-4 pt-2 pb-4 space-y-2">
+        <div className="md:hidden border-t border-slate-200 bg-white/95 backdrop-blur-md px-4 pt-2 pb-4 space-y-2 shadow-lg">
           {navLinks.map((link) => {
             const Icon = link.icon;
             const isActive = pathname === link.href;
@@ -208,23 +208,23 @@ export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
                 key={link.href}
                 href={link.href}
                 onClick={() => setMobileMenuOpen(false)}
-                className={`flex items-center space-x-3 px-3 py-2 rounded-lg text-base font-medium ${
+                className={`flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-semibold ${
                   isActive
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                    ? 'bg-emerald-50 text-emerald-900 border border-emerald-600/30'
+                    : 'text-slate-700 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
-                <Icon className="w-5 h-5" />
+                <Icon className="w-5 h-5 text-emerald-700" />
                 <span>{link.label}</span>
               </Link>
             );
           })}
 
-          <div className="pt-3 border-t border-white/10 space-y-2">
-            <div className="flex items-center justify-between text-xs text-slate-400">
-              <span>Database: {isSupabase ? 'Supabase PostgreSQL' : 'Active'}</span>
+          <div className="pt-3 border-t border-slate-200 space-y-2">
+            <div className="flex items-center justify-between text-xs text-slate-500">
+              <span>Database: {isSupabase ? 'Supabase PostgreSQL' : 'Local Store Active'}</span>
               {user && (
-                <span className="text-emerald-400 font-medium">
+                <span className="text-emerald-800 font-semibold">
                   {user.name || user.email}
                 </span>
               )}
@@ -238,9 +238,9 @@ export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
                     onRunDetection();
                   }}
                   disabled={isRunningDetection}
-                  className="flex-1 py-2 rounded-lg text-xs font-semibold bg-emerald-600 text-white"
+                  className="flex-1 py-2 rounded-lg text-xs font-semibold bg-[#064e3b] text-white hover:bg-[#047857]"
                 >
-                  {isRunningDetection ? 'Analyzing...' : 'Run Detection'}
+                  {isRunningDetection ? 'Analyzing POS...' : 'Run Detection'}
                 </button>
               )}
 
@@ -250,7 +250,7 @@ export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
                     setMobileMenuOpen(false);
                     await handleSignOut();
                   }}
-                  className="flex items-center justify-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-slate-800 text-rose-400 hover:bg-slate-700"
+                  className="flex items-center justify-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-rose-50 text-rose-700 hover:bg-rose-100"
                 >
                   <LogOut className="w-4 h-4" />
                   <span>Sign Out</span>
@@ -260,14 +260,14 @@ export function Navbar({ onRunDetection, isRunningDetection }: NavbarProps) {
                   <Link
                     href="/login"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="flex-1 text-center py-2 rounded-lg text-xs font-medium bg-slate-800 text-slate-200"
+                    className="flex-1 text-center py-2 rounded-lg text-xs font-semibold bg-slate-100 text-slate-800"
                   >
                     Sign In
                   </Link>
                   <Link
                     href="/signup"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="flex-1 text-center py-2 rounded-lg text-xs font-semibold bg-emerald-600 text-white"
+                    className="flex-1 text-center py-2 rounded-lg text-xs font-semibold bg-[#064e3b] text-white"
                   >
                     Sign Up
                   </Link>
