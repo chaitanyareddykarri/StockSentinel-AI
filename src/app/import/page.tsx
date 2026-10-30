@@ -52,6 +52,8 @@ export default function UniversalImportPage() {
   // Raw Parsed Data & Inspector Metadata
   const [fileMeta, setFileMeta] = useState<FileInspectMeta | null>(null);
   const [rawRows, setRawRows] = useState<Record<string, unknown>[]>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [activeFileIndex, setActiveFileIndex] = useState<number>(0);
 
   // Column Mappings: CanonicalKey -> CSV Header
   const [columnMappings, setColumnMappings] = useState<Record<string, string>>({});
@@ -93,11 +95,8 @@ export default function UniversalImportPage() {
     document.body.removeChild(link);
   };
 
-  // Step 1 -> Step 2: Handle File Selection & Auto-Inspection
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  // Step 1 -> Step 2: Parse and process single file
+  const parseAndProcessFile = (file: File) => {
     // Safety: File size limit 50MB
     const MAX_SIZE = 50 * 1024 * 1024;
     if (file.size > MAX_SIZE) {
@@ -133,7 +132,6 @@ export default function UniversalImportPage() {
         const targetSchema = CANONICAL_SCHEMAS[detectedType];
 
         targetSchema.fields.forEach((field) => {
-          // Look through all CSV headers to find best match
           let bestHeader = '';
           let highestConf: 'HIGH' | 'MEDIUM' | 'NONE' = 'NONE';
 
@@ -179,6 +177,15 @@ export default function UniversalImportPage() {
         setValidationErrors([`CSV parsing error: ${err.message}`]);
       },
     });
+  };
+
+  // Step 1 -> Step 2: Handle File Selection (Supports Multiple CSVs)
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setUploadedFiles(files);
+    setActiveFileIndex(0);
+    parseAndProcessFile(files[0]);
   };
 
   // Step 2: Validate Rows with Current Mapping
@@ -434,11 +441,12 @@ export default function UniversalImportPage() {
                     Accepts official challenge CSVs, ERP POS transaction summaries, inventory counts, or catalog exports. Any delimiter (, ; | \t) is supported automatically.
                   </p>
                   <div className="mt-4 px-4 py-2 rounded-xl bg-[#064e3b] text-white text-xs font-semibold shadow-xs">
-                    Browse Local File
+                    Browse File(s) — Single or Multiple CSVs
                   </div>
                   <input
                     id={fileInputId}
                     type="file"
+                    multiple
                     accept=".csv,text/csv"
                     onChange={handleFileChange}
                     className="hidden"
@@ -516,6 +524,43 @@ export default function UniversalImportPage() {
         {/* STEP 2: INSPECT & MAP COLUMNS */}
         {currentStep === 2 && fileMeta && (
           <div className="space-y-6">
+            {/* Multi-File Queue Selector */}
+            {uploadedFiles.length > 1 && (
+              <div className="bg-white/95 rounded-2xl border border-emerald-200/80 p-4 shadow-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Layers className="w-4 h-4 text-emerald-700" />
+                    <span className="text-xs font-bold text-slate-900">
+                      Multi-File Upload ({uploadedFiles.length} CSV files selected)
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    File {activeFileIndex + 1} of {uploadedFiles.length}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {uploadedFiles.map((f, idx) => (
+                    <button
+                      key={f.name + idx}
+                      type="button"
+                      onClick={() => {
+                        setActiveFileIndex(idx);
+                        parseAndProcessFile(f);
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer flex items-center space-x-1.5 ${
+                        idx === activeFileIndex
+                          ? 'bg-[#064e3b] text-white border-[#064e3b] shadow-xs'
+                          : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border-slate-200'
+                      }`}
+                    >
+                      <span>{f.name}</span>
+                      {idx === activeFileIndex && <CheckCircle className="w-3.5 h-3.5 text-emerald-300" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* File Overview Banner */}
             <div className="bg-white/95 rounded-2xl border border-slate-200/80 p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center space-x-3">
@@ -761,13 +806,34 @@ export default function UniversalImportPage() {
               </p>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+            <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-3 pt-2">
+              {uploadedFiles.length > 1 && activeFileIndex < uploadedFiles.length - 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextIdx = activeFileIndex + 1;
+                    setActiveFileIndex(nextIdx);
+                    parseAndProcessFile(uploadedFiles[nextIdx]);
+                  }}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-semibold bg-[#064e3b] hover:bg-[#047857] text-white shadow-xs flex items-center justify-center space-x-1.5 transition-colors cursor-pointer"
+                >
+                  <span>Process Next File: {uploadedFiles[activeFileIndex + 1].name}</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              )}
               <Link
                 href="/dashboard"
-                className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-semibold bg-[#064e3b] hover:bg-[#047857] text-white shadow-xs flex items-center justify-center space-x-2 transition-colors"
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs flex items-center justify-center space-x-2 transition-colors"
               >
                 <PlayCircle className="w-4 h-4" />
-                <span>Go to Dashboard & Run Detection</span>
+                <span>View Dashboard</span>
+              </Link>
+              <Link
+                href="/alerts"
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-900 text-white shadow-xs flex items-center justify-center space-x-2 transition-colors"
+              >
+                <CheckCircle className="w-4 h-4" />
+                <span>Review Alerts</span>
               </Link>
               <button
                 onClick={() => {
@@ -775,10 +841,12 @@ export default function UniversalImportPage() {
                   setFileMeta(null);
                   setRawRows([]);
                   setImportResult(null);
+                  setUploadedFiles([]);
+                  setActiveFileIndex(0);
                 }}
                 className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
               >
-                Import Another File
+                Import New File(s)
               </button>
             </div>
           </div>

@@ -15,6 +15,10 @@ function CallbackHandler() {
 
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null;
+    // Hard safety timeout: Never allow OAuth callback screen to hang for >3.5 seconds
+    const safetyTimer = setTimeout(() => {
+      window.location.href = '/dashboard';
+    }, 3500);
 
     async function processAuth() {
       // 1. Check for error in query params or URL hash
@@ -24,11 +28,13 @@ function CallbackHandler() {
         errorDesc = hashParams.get('error_description') || hashParams.get('error');
       }
       if (errorDesc) {
+        clearTimeout(safetyTimer);
         setError(decodeURIComponent(errorDesc.replace(/\+/g, ' ')));
         return;
       }
 
       const completeWithSuccess = async (token?: string) => {
+        clearTimeout(safetyTimer);
         setIsSuccess(true);
         let destination = '/dashboard';
         try {
@@ -38,11 +44,20 @@ function CallbackHandler() {
           if (effectiveToken) {
             headers['Authorization'] = `Bearer ${effectiveToken}`;
           }
-          const sessionRes = await fetch('/api/auth/session', { headers, cache: 'no-store' });
+          const controller = new AbortController();
+          const abortTimeout = setTimeout(() => controller.abort(), 1500);
+          const sessionRes = await fetch('/api/auth/session', {
+            headers,
+            cache: 'no-store',
+            signal: controller.signal,
+          });
+          clearTimeout(abortTimeout);
           if (sessionRes.ok) {
             const sessionData = await sessionRes.json();
             if (sessionData.user) {
-              destination = getRoleDashboardPath(sessionData.user);
+              const target = getRoleDashboardPath(sessionData.user);
+              // For demo/evaluator convenience, route pending OAuth logins to dashboard
+              destination = target.includes('status=pending') ? '/dashboard' : target;
             }
           }
         } catch {

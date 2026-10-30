@@ -9,7 +9,11 @@ export type DatasetType =
   | 'inventory_snapshots'
   | 'products'
   | 'stores'
-  | 'promotions';
+  | 'promotions'
+  | 'dev_labels'
+  | 'dev_truth'
+  | 'holidays'
+  | 'predictions';
 
 export interface CanonicalFieldDef {
   key: string;
@@ -205,7 +209,7 @@ export const CANONICAL_SCHEMAS: Record<DatasetType, {
         description: 'Department or category',
         required: false,
         type: 'string',
-        synonyms: ['category', 'dept', 'department', 'merchandise_group', 'product_group'],
+        synonyms: ['category', 'sub_category', 'dept', 'department', 'merchandise_group', 'product_group'],
       },
       {
         key: 'unit_price',
@@ -222,6 +226,38 @@ export const CANONICAL_SCHEMAS: Record<DatasetType, {
         required: false,
         type: 'number',
         synonyms: ['unit_cost', 'cost', 'unit_cost_inr', 'purchase_cost', 'cogs'],
+      },
+      {
+        key: 'unit_margin',
+        label: 'Unit Margin',
+        description: 'Profit margin per unit (INR)',
+        required: false,
+        type: 'number',
+        synonyms: ['unit_margin_inr', 'unit_margin', 'margin', 'gross_margin'],
+      },
+      {
+        key: 'brand',
+        label: 'Brand',
+        description: 'Product brand or manufacturer',
+        required: false,
+        type: 'string',
+        synonyms: ['brand', 'brand_name', 'manufacturer', 'vendor'],
+      },
+      {
+        key: 'shelf_life_class',
+        label: 'Shelf Life Class',
+        description: 'Perishability or shelf life classification',
+        required: false,
+        type: 'string',
+        synonyms: ['shelf_life_class', 'shelf_life', 'perishability', 'life_class'],
+      },
+      {
+        key: 'case_pack',
+        label: 'Case Pack Size',
+        description: 'Units per carton / pack size',
+        required: false,
+        type: 'number',
+        synonyms: ['case_pack', 'pack_size', 'case_size', 'pack'],
       },
       {
         key: 'avg_daily_demand',
@@ -268,15 +304,31 @@ export const CANONICAL_SCHEMAS: Record<DatasetType, {
         description: 'Physical location or city/state',
         required: false,
         type: 'string',
-        synonyms: ['location', 'city', 'address', 'store_location', 'region'],
+        synonyms: ['location', 'city', 'state', 'address', 'store_location', 'region'],
       },
       {
         key: 'store_type',
         label: 'Format / Type',
-        description: 'Store format (Hyper, Express, Supercenter)',
+        description: 'Store format (Hyper, Express, Supercenter, tier)',
         required: false,
         type: 'string',
-        synonyms: ['store_type', 'format', 'type', 'tier'],
+        synonyms: ['store_type', 'format', 'type', 'tier', 'city_tier'],
+      },
+      {
+        key: 'size_sqft',
+        label: 'Store Size (Sq Ft)',
+        description: 'Retail store square footage',
+        required: false,
+        type: 'number',
+        synonyms: ['size_sqft', 'sqft', 'store_size', 'size', 'square_feet'],
+      },
+      {
+        key: 'label_split',
+        label: 'Dataset Split',
+        description: 'Dev, Validation, or Evaluation partition',
+        required: false,
+        type: 'string',
+        synonyms: ['label_split', 'split', 'dataset_split', 'partition'],
       },
       {
         key: 'total_skus',
@@ -294,9 +346,17 @@ export const CANONICAL_SCHEMAS: Record<DatasetType, {
     enablesDetection: false,
     fields: [
       {
+        key: 'promo_id',
+        label: 'Promotion Identifier',
+        description: 'Unique promo campaign ID',
+        required: false,
+        type: 'string',
+        synonyms: ['promo_id', 'promotion_id', 'campaign_id', 'id'],
+      },
+      {
         key: 'sku',
         label: 'SKU Identifier',
-        description: 'Promoted product SKU',
+        description: 'Promoted product SKU or scope target',
         required: true,
         type: 'string',
         synonyms: ['sku_id', 'sku', 'product_id', 'scope_value', 'item_id'],
@@ -307,7 +367,7 @@ export const CANONICAL_SCHEMAS: Record<DatasetType, {
         description: 'Store where promo applies (or leave empty for all)',
         required: false,
         type: 'string',
-        synonyms: ['store_id', 'store', 'store_code', 'store_scope_value'],
+        synonyms: ['store_id', 'store', 'store_code', 'store_scope_value', 'store_scope'],
       },
       {
         key: 'start_date',
@@ -339,7 +399,235 @@ export const CANONICAL_SCHEMAS: Record<DatasetType, {
         description: 'bogo, price_off, feature, endcap',
         required: false,
         type: 'string',
-        synonyms: ['promo_type', 'type', 'mechanic', 'promotion_type'],
+        synonyms: ['promo_type', 'type', 'mechanic', 'promotion_type', 'promo_name'],
+      },
+    ],
+  },
+  dev_labels: {
+    name: 'Ground Truth Episode Labels',
+    description: 'Official evaluation benchmark ground truth episode window records (dev_labels.csv).',
+    enablesDetection: true,
+    fields: [
+      {
+        key: 'episode_id',
+        label: 'Episode Identifier',
+        description: 'Unique identifier for the phantom stockout episode',
+        required: true,
+        type: 'string',
+        synonyms: ['episode_id', 'incident_id', 'id', 'episode'],
+      },
+      {
+        key: 'store_id',
+        label: 'Store Identifier',
+        description: 'Store ID where incident occurred (e.g. STR-BFPW)',
+        required: true,
+        type: 'string',
+        synonyms: ['store_id', 'store', 'store_code', 'location_id'],
+      },
+      {
+        key: 'sku',
+        label: 'SKU Identifier',
+        description: 'Affected product SKU ID (e.g. SKU-4ZMFTW)',
+        required: true,
+        type: 'string',
+        synonyms: ['sku_id', 'sku', 'product_id', 'item_id'],
+      },
+      {
+        key: 'label_type',
+        label: 'Incident Type',
+        description: 'Verified stockout classification (phantom_stockout, slow_mover, zero_sales)',
+        required: true,
+        type: 'string',
+        synonyms: ['label_type', 'incident_type', 'stockout_type', 'type', 'category'],
+      },
+      {
+        key: 'counts_as_positive',
+        label: 'Counts As Positive',
+        description: 'Binary flag indicating whether episode counts as a positive incident (1/0, TRUE/FALSE)',
+        required: true,
+        type: 'boolean',
+        synonyms: ['counts_as_positive', 'is_positive', 'positive', 'target', 'is_phantom'],
+      },
+      {
+        key: 'episode_start_date',
+        label: 'Episode Start Date',
+        description: 'Date the phantom stockout begins (YYYY-MM-DD)',
+        required: true,
+        type: 'date',
+        synonyms: ['episode_start_date', 'start_date', 'start', 'incident_date'],
+      },
+      {
+        key: 'last_date_in_window',
+        label: 'Last Date in Window',
+        description: 'Closing evaluation date of the episode window (YYYY-MM-DD)',
+        required: true,
+        type: 'date',
+        synonyms: ['last_date_in_window', 'end_date', 'window_end', 'last_date'],
+      },
+      {
+        key: 'continues_after_window',
+        label: 'Continues After Window',
+        description: 'Indicator if the incident persists past window closure (1/0, TRUE/FALSE)',
+        required: false,
+        type: 'boolean',
+        synonyms: ['continues_after_window', 'continues', 'ongoing', 'active'],
+      },
+    ],
+  },
+  dev_truth: {
+    name: 'Ground Truth Daily Incidents',
+    description: 'Day-level official ground truth incident occurrences (dev_truth.csv).',
+    enablesDetection: true,
+    fields: [
+      {
+        key: 'date',
+        label: 'Incident Date',
+        description: 'Date of ground truth stockout (YYYY-MM-DD)',
+        required: true,
+        type: 'date',
+        synonyms: ['date', 'incident_date', 'day', 'dt'],
+      },
+      {
+        key: 'store_id',
+        label: 'Store Identifier',
+        description: 'Store code (e.g. STR-BFPW)',
+        required: true,
+        type: 'string',
+        synonyms: ['store_id', 'store', 'store_code', 'location_id'],
+      },
+      {
+        key: 'sku',
+        label: 'SKU Identifier',
+        description: 'Target product SKU ID',
+        required: true,
+        type: 'string',
+        synonyms: ['sku_id', 'sku', 'product_id', 'item_id'],
+      },
+      {
+        key: 'label_type',
+        label: 'Incident Type',
+        description: 'Stockout label category (phantom_stockout, slow_mover, zero_sales)',
+        required: true,
+        type: 'string',
+        synonyms: ['label_type', 'incident_type', 'type', 'stockout_type'],
+      },
+      {
+        key: 'episode_id',
+        label: 'Episode Identifier',
+        description: 'Reference to parent episode ID if multi-day',
+        required: false,
+        type: 'string',
+        synonyms: ['episode_id', 'episode', 'id'],
+      },
+    ],
+  },
+  holidays: {
+    name: 'Holiday & Event Calendar',
+    description: 'Regional and national holiday calendar (holiday_calendar.csv).',
+    enablesDetection: false,
+    fields: [
+      {
+        key: 'date',
+        label: 'Holiday Date',
+        description: 'Calendar date of the holiday or event (YYYY-MM-DD)',
+        required: true,
+        type: 'date',
+        synonyms: ['date', 'holiday_date', 'day'],
+      },
+      {
+        key: 'holiday_name',
+        label: 'Holiday Name',
+        description: 'Official name of the holiday (e.g. Diwali, Republic Day)',
+        required: true,
+        type: 'string',
+        synonyms: ['holiday_name', 'name', 'holiday', 'event', 'title'],
+      },
+      {
+        key: 'holiday_type',
+        label: 'Holiday Type',
+        description: 'Gazetted, restricted, regional, or seasonal event',
+        required: false,
+        type: 'string',
+        synonyms: ['holiday_type', 'type', 'category', 'event_type'],
+      },
+      {
+        key: 'scope',
+        label: 'Regional Scope',
+        description: 'National or state scope (e.g. National, Maharashtra, Karnataka)',
+        required: false,
+        type: 'string',
+        synonyms: ['scope', 'coverage', 'region', 'state', 'geography'],
+      },
+      {
+        key: 'date_certainty',
+        label: 'Date Certainty',
+        description: 'Exact, estimated, lunar-dependent',
+        required: false,
+        type: 'string',
+        synonyms: ['date_certainty', 'certainty', 'status', 'confidence'],
+      },
+    ],
+  },
+  predictions: {
+    name: 'Model Predictions & Submissions',
+    description: 'Algorithmic predictions or official challenge submission file (sample_submission.csv).',
+    enablesDetection: true,
+    fields: [
+      {
+        key: 'date',
+        label: 'Prediction Date',
+        description: 'Predicted incident date (YYYY-MM-DD)',
+        required: true,
+        type: 'date',
+        synonyms: ['date', 'prediction_date', 'day', 'dt'],
+      },
+      {
+        key: 'store_id',
+        label: 'Store Identifier',
+        description: 'Store identifier (e.g. STR-BFPW)',
+        required: true,
+        type: 'string',
+        synonyms: ['store_id', 'store', 'store_code', 'location_id'],
+      },
+      {
+        key: 'sku',
+        label: 'SKU Identifier',
+        description: 'Product SKU identifier',
+        required: true,
+        type: 'string',
+        synonyms: ['sku_id', 'sku', 'product_id', 'item_id'],
+      },
+      {
+        key: 'rank',
+        label: 'Prediction Rank',
+        description: 'Store-day rank order (1 = highest priority incident)',
+        required: false,
+        type: 'number',
+        synonyms: ['rank', 'order', 'priority', 'ranking'],
+      },
+      {
+        key: 'confidence',
+        label: 'Confidence / Probability',
+        description: 'Model output probability score (0.0 to 1.0)',
+        required: false,
+        type: 'number',
+        synonyms: ['confidence', 'probability', 'prob', 'score', 'p_score'],
+      },
+      {
+        key: 'reason',
+        label: 'AI Diagnostic Reason',
+        description: 'Explainable AI diagnostic rationale (e.g. Consecutive zero-sales with positive book stock)',
+        required: false,
+        type: 'string',
+        synonyms: ['reason', 'explanation', 'root_cause', 'justification', 'rationale'],
+      },
+      {
+        key: 'predicted_type',
+        label: 'Predicted Stockout Type',
+        description: 'phantom_stockout, slow_mover, zero_sales',
+        required: false,
+        type: 'string',
+        synonyms: ['predicted_type', 'prediction', 'label', 'type', 'incident_type'],
       },
     ],
   },
@@ -410,8 +698,67 @@ export function detectDatasetType(headers: string[]): {
 } {
   const normalized = headers.map(normalizeHeader);
 
-  // Check for combined sales & inventory first (both units_sold/sales and on_hand/inventory present)
-  const hasDate = normalized.some((h) => ['date', 'sales_date', 'day'].some((s) => h.includes(s)));
+  // 1. Check for Ground Truth Episode Labels (dev_labels.csv)
+  // Headers: ['episode_id', 'store_id', 'sku_id', 'label_type', 'counts_as_positive', 'episode_start_date', 'last_date_in_window', 'continues_after_window']
+  const hasEpisode = normalized.some((h) => h === 'episode_id' || h.includes('episode'));
+  const hasCountsAsPositive = normalized.some((h) => h === 'counts_as_positive' || h.includes('positive'));
+  const hasEpisodeStartDate = normalized.some((h) => h === 'episode_start_date' || h === 'last_date_in_window');
+  if (hasEpisode && (hasCountsAsPositive || hasEpisodeStartDate)) {
+    return {
+      detectedType: 'dev_labels',
+      confidence: 0.99,
+      reason: 'Detected official evaluation episode labels (contains episode_id and episode window fields).',
+    };
+  }
+
+  // 2. Check for Ground Truth Daily Incidents (dev_truth.csv)
+  // Headers: ['date', 'store_id', 'sku_id', 'label_type', 'episode_id']
+  const hasDate = normalized.some((h) => ['date', 'sales_date', 'day', 'dt'].some((s) => h === s || h.includes(s)));
+  const hasLabelType = normalized.some((h) => h === 'label_type' || h === 'stockout_type' || h.includes('incident_type'));
+  if (hasEpisode && hasLabelType && hasDate) {
+    return {
+      detectedType: 'dev_truth',
+      confidence: 0.98,
+      reason: 'Detected official daily ground truth incidents (contains date, episode_id, and label_type).',
+    };
+  }
+
+  // 3. Check for Holiday Calendar (holiday_calendar.csv)
+  // Headers: ['date', 'holiday_name', 'holiday_type', 'scope', 'date_certainty']
+  const hasHoliday = normalized.some((h) => h === 'holiday_name' || h.includes('holiday') || h === 'date_certainty');
+  if (hasHoliday && hasDate) {
+    return {
+      detectedType: 'holidays',
+      confidence: 0.98,
+      reason: 'Detected holiday & promotional calendar (contains holiday_name/date_certainty).',
+    };
+  }
+
+  // 4. Check for Predictions / Submissions (sample_submission.csv)
+  // Headers: ['date', 'store_id', 'sku_id', 'rank', 'confidence', 'reason', 'predicted_type']
+  const hasRank = normalized.some((h) => h === 'rank' || h === 'order' || h === 'ranking');
+  const hasConfidence = normalized.some((h) => h === 'confidence' || h === 'probability' || h === 'prob');
+  const hasPredictedType = normalized.some((h) => h === 'predicted_type' || h === 'prediction');
+  if (hasRank || (hasConfidence && (hasPredictedType || normalized.some((h) => h === 'reason')))) {
+    return {
+      detectedType: 'predictions',
+      confidence: 0.98,
+      reason: 'Detected algorithm predictions/submissions (contains rank, confidence, or predicted_type).',
+    };
+  }
+
+  // 5. Check for Promotion Calendar (promotion_calendar.csv)
+  // Headers: ['promo_id', 'promo_name', 'promo_type', 'scope_level', 'scope_value', 'store_scope', 'store_scope_value', 'start_date', 'end_date', 'discount_pct']
+  const hasPromoId = normalized.some((h) => h === 'promo_id' || h === 'promotion_id' || h === 'discount_pct' || h === 'scope_level');
+  if (hasPromoId) {
+    return {
+      detectedType: 'promotions',
+      confidence: 0.95,
+      reason: 'Detected retail promotions calendar (contains promo_id, discount_pct, or scope_level).',
+    };
+  }
+
+  // 6. Check for Combined Sales & Inventory (daily_sales_inventory_sample_2stores.csv)
   const hasStore = normalized.some((h) => ['store', 'location'].some((s) => h.includes(s)));
   const hasSku = normalized.some((h) => ['sku', 'product', 'item'].some((s) => h.includes(s)));
   const hasSales = normalized.some((h) => ['units_sold', 'quantity_sold', 'sales_qty', 'units', 'qty', 'sold'].some((s) => h.includes(s)));
@@ -425,10 +772,11 @@ export function detectDatasetType(headers: string[]): {
     };
   }
 
+  // 7. Check for separate transaction and snapshot entities
   if (hasDate && hasStore && hasSku && hasSales) {
     return {
       detectedType: 'daily_sales',
-      confidence: 0.85,
+      confidence: 0.90,
       reason: 'Contains store sales transactions (requires matching inventory snapshots for phantom detection).',
     };
   }
@@ -436,28 +784,30 @@ export function detectDatasetType(headers: string[]): {
   if (hasDate && hasStore && hasSku && hasInventory) {
     return {
       detectedType: 'inventory_snapshots',
-      confidence: 0.85,
+      confidence: 0.90,
       reason: 'Contains on-hand inventory snapshots per store and SKU.',
     };
   }
 
-  // Check catalog types
-  const hasPrice = normalized.some((h) => ['price', 'unit_price', 'mrp', 'cost'].some((s) => h.includes(s)));
+  // 8. Check catalog master schemas
+  const hasPrice = normalized.some((h) => ['price', 'unit_price', 'mrp', 'cost', 'unit_margin'].some((s) => h.includes(s)));
+  const hasSkuName = normalized.some((h) => h === 'sku_name' || h === 'shelf_life_class' || h === 'pack_size' || h === 'case_pack');
   const hasName = normalized.some((h) => ['name', 'description', 'title'].some((s) => h.includes(s)));
-  if (hasSku && (hasPrice || hasName)) {
+  if (hasSku && (hasPrice || hasSkuName || hasName)) {
     return {
       detectedType: 'products',
-      confidence: 0.8,
-      reason: 'Contains SKU catalog with product descriptions/prices.',
+      confidence: 0.95,
+      reason: 'Detected SKU master product catalog.',
     };
   }
 
+  const hasStoreFeatures = normalized.some((h) => ['size_sqft', 'sqft', 'format', 'city_tier', 'label_split', 'opening_date'].some((s) => h.includes(s)));
   const hasLocation = normalized.some((h) => ['location', 'city', 'state', 'address'].some((s) => h.includes(s)));
-  if (hasStore && (hasLocation || hasName)) {
+  if (hasStore && (hasStoreFeatures || hasLocation || hasName)) {
     return {
       detectedType: 'stores',
-      confidence: 0.8,
-      reason: 'Contains store directory with locations and store names.',
+      confidence: 0.95,
+      reason: 'Detected Store Master directory.',
     };
   }
 
