@@ -1,6 +1,26 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# ==============================================================================
+# StockSentinel AI — Git Ignore Configuration
+# ==============================================================================
 
-# dependencies
+# ------------------------------------------------------------------------------
+# 1. Environment & Secret Credentials
+# ------------------------------------------------------------------------------
+.env
+.env*.local
+.env.development
+.env.test
+.env.production
+.env*
+!.env.example
+*.pem
+*.key
+*.cert
+*.pfx
+*.crt
+
+# ------------------------------------------------------------------------------
+# 2. Package Managers & Dependencies
+# ------------------------------------------------------------------------------
 /node_modules
 /.pnp
 .pnp.*
@@ -10,55 +30,88 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
-
-# next.js
+# ------------------------------------------------------------------------------
+# 3. Next.js & TypeScript Build Outputs
+# ------------------------------------------------------------------------------
 /.next/
 /out/
-
-# production
 /build
+/dist
+/.turbo/
+*.tsbuildinfo
+next-env.d.ts
+.vercel
 
-# misc
+# ------------------------------------------------------------------------------
+# 4. Testing, Auditing & Coverage
+# ------------------------------------------------------------------------------
+/coverage
+/.nyc_output
+*.lcov
+.pytest_cache/
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ------------------------------------------------------------------------------
+# 5. Python Bytecode, Caches & Virtual Environments
+# ------------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+.venv/
+venv/
+env/
+ENV/
+.ipynb_checkpoints/
+
+# ------------------------------------------------------------------------------
+# 6. Operating System & Editor Files
+# ------------------------------------------------------------------------------
 .DS_Store
-*.pem
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.cursor/
 
-# debug
+# ------------------------------------------------------------------------------
+# 7. Diagnostic & Process Logs
+# ------------------------------------------------------------------------------
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
-!.env.example
-
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-# local persistent runtime data & data caches
+# ------------------------------------------------------------------------------
+# 8. Local Runtime Storage, Caches & Temporary Files
+# ------------------------------------------------------------------------------
 /data/*.json
+/data/*.tmp*
 /data/raw/*
 !/data/raw/.gitkeep
 /data/interim/*
 !/data/interim/.gitkeep
 /data/processed/*
 !/data/processed/.gitkeep
+/scratch/
+*.tmp
 
-# local agent and assistant state
-.agents/
-skills-lock.json
-
-# python bytecode
-__pycache__/
-*.pyc
-
-# R1 competition large data files & models
+# ------------------------------------------------------------------------------
+# 9. Large R1 Competition Datasets & Models
+# ------------------------------------------------------------------------------
 *.parquet
 /data/*.parquet
 /data/daily_sales_inventory*
@@ -68,5 +121,10 @@ __pycache__/
 /data/sku_master.csv
 /data/promotion_calendar.csv
 /data/holiday_calendar.csv
-models/
+/models/
 
+# ------------------------------------------------------------------------------
+# 10. Agent & Assistant Local State
+# ------------------------------------------------------------------------------
+.agents/
+skills-lock.json
