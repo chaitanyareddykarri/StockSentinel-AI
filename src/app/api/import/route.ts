@@ -164,7 +164,7 @@ export async function POST(request: Request) {
           }
           validRows.push({
             id: rowId,
-            company_id: auth.user.companyId,
+            ...(auth.user.companyId && isValidUuid(auth.user.companyId) ? { company_id: auth.user.companyId } : {}),
             store_id: matchingStore.id, // Actual database UUID
             product_id: matchingProduct.id, // Actual database UUID
             sku: matchingProduct.sku,
@@ -186,7 +186,7 @@ export async function POST(request: Request) {
           }
           validRows.push({
             id: rowId,
-            company_id: auth.user.companyId,
+            ...(auth.user.companyId && isValidUuid(auth.user.companyId) ? { company_id: auth.user.companyId } : {}),
             store_id: matchingStore.id, // Actual database UUID
             product_id: matchingProduct.id, // Actual database UUID
             sku: matchingProduct.sku,
@@ -201,7 +201,7 @@ export async function POST(request: Request) {
           }
           validRows.push({
             id: rowId,
-            company_id: auth.user.companyId,
+            ...(auth.user.companyId && isValidUuid(auth.user.companyId) ? { company_id: auth.user.companyId } : {}),
             store_id: matchingStore.id, // Actual database UUID
             product_id: matchingProduct.id, // Actual database UUID
             sku: matchingProduct.sku,
@@ -220,14 +220,28 @@ export async function POST(request: Request) {
           rowErrors.push(`Row ${rowNum}: Missing store code or name.`);
           continue;
         }
+
+        let loc = String(row.location || 'Retail Location').trim();
+        let storeType = String(row.store_type || 'Supercenter').trim();
+        let totalSkus = Number(row.total_skus);
+
+        // Auto-heal unquoted comma in CSV location (e.g. "Seattle, WA, Supercenter, 30")
+        if (isNaN(totalSkus) && row.store_type && /^[A-Z]{2}$/i.test(String(row.store_type).trim())) {
+          loc = `${loc}, ${row.store_type}`;
+          storeType = String(row.total_skus || 'Supercenter').trim();
+          const rowKeys = Object.keys(row);
+          const overflowValue = Number((row as Record<string, unknown>)[rowKeys[5]]);
+          totalSkus = !isNaN(overflowValue) ? overflowValue : 30;
+        }
+
         validRows.push({
           id: rowId,
-          company_id: auth.user.companyId,
+          ...(auth.user.companyId && isValidUuid(auth.user.companyId) ? { company_id: auth.user.companyId } : {}),
           code: String(row.code).trim(),
           name: String(row.name).trim(),
-          location: String(row.location || 'Retail Location').trim(),
-          store_type: String(row.store_type || 'Supercenter').trim(),
-          total_skus: Number(row.total_skus) || 0,
+          location: loc,
+          store_type: storeType,
+          total_skus: !isNaN(totalSkus) ? totalSkus : 0,
           status: 'ACTIVE',
           created_at: new Date().toISOString(),
         });
@@ -238,7 +252,7 @@ export async function POST(request: Request) {
         }
         validRows.push({
           id: rowId,
-          company_id: auth.user.companyId,
+          ...(auth.user.companyId && isValidUuid(auth.user.companyId) ? { company_id: auth.user.companyId } : {}),
           sku: String(row.sku).trim(),
           name: String(row.name).trim(),
           category: String(row.category || 'General').trim(),

@@ -147,9 +147,10 @@ export async function getStores(
       let query = supabase.from('stores').select('*').order('name');
       if (companyId && isValidUuid(companyId)) query = query.eq('company_id', companyId);
       if (expandedAllowed && !expandedAllowed.includes('*')) {
-        query = query.in('id', expandedAllowed.length > 0 ? expandedAllowed : ['__NONE__']);
+        const validStoreUuids = expandedAllowed.filter(isValidUuid);
+        query = query.in('id', validStoreUuids.length > 0 ? validStoreUuids : [NIL_UUID]);
       }
-      if (userId && !allowedStoreIds && (!companyId || !isValidUuid(companyId))) query = query.eq('user_id', userId);
+      if (userId && isValidUuid(userId) && !allowedStoreIds && (!companyId || !isValidUuid(companyId))) query = query.eq('user_id', userId);
       const { data, error } = await query;
       if (!error && data) return data as Store[];
       if (error) {
@@ -196,7 +197,7 @@ export async function getProducts(userId?: string, companyId?: string): Promise<
     try {
       let query = supabase.from('products').select('*').order('name');
       if (companyId && isValidUuid(companyId)) query = query.eq('company_id', companyId);
-      if (userId && (!companyId || !isValidUuid(companyId))) query = query.eq('user_id', userId);
+      if (userId && isValidUuid(userId) && (!companyId || !isValidUuid(companyId))) query = query.eq('user_id', userId);
       const { data, error } = await query;
       if (!error && data) return data as Product[];
       if (error) {
@@ -232,12 +233,17 @@ export async function getDailySales(
       let query = supabase.from('daily_sales').select('*').order('date', { ascending: true });
       if (companyId && isValidUuid(companyId)) query = query.eq('company_id', companyId);
       if (expandedAllowed && !expandedAllowed.includes('*')) {
-        query = query.in('store_id', expandedAllowed.length > 0 ? expandedAllowed : ['__NONE__']);
+        const validStoreUuids = expandedAllowed.filter(isValidUuid);
+        query = query.in('store_id', validStoreUuids.length > 0 ? validStoreUuids : [NIL_UUID]);
       } else if (storeId && storeId !== 'ALL') {
-        const targetIds = demoStoreId && demoStoreId !== storeId ? [storeId, demoStoreId] : [storeId];
-        query = query.in('store_id', targetIds);
+        const targetIds = (demoStoreId && demoStoreId !== storeId ? [storeId, demoStoreId] : [storeId]).filter(isValidUuid);
+        if (targetIds.length > 0) {
+          query = query.in('store_id', targetIds);
+        } else {
+          return [];
+        }
       }
-      if (userId && !allowedStoreIds && !companyId) query = query.eq('user_id', userId);
+      if (userId && isValidUuid(userId) && !allowedStoreIds && (!companyId || !isValidUuid(companyId))) query = query.eq('user_id', userId);
       if (sku) query = query.eq('sku', sku);
       const { data, error } = await query;
       if (!error && data) return data as DailySale[];
@@ -281,12 +287,17 @@ export async function getInventorySnapshots(
       let query = supabase.from('inventory_snapshots').select('*').order('date', { ascending: true });
       if (companyId && isValidUuid(companyId)) query = query.eq('company_id', companyId);
       if (expandedAllowed && !expandedAllowed.includes('*')) {
-        query = query.in('store_id', expandedAllowed.length > 0 ? expandedAllowed : ['__NONE__']);
+        const validStoreUuids = expandedAllowed.filter(isValidUuid);
+        query = query.in('store_id', validStoreUuids.length > 0 ? validStoreUuids : [NIL_UUID]);
       } else if (storeId && storeId !== 'ALL') {
-        const targetIds = demoStoreId && demoStoreId !== storeId ? [storeId, demoStoreId] : [storeId];
-        query = query.in('store_id', targetIds);
+        const targetIds = (demoStoreId && demoStoreId !== storeId ? [storeId, demoStoreId] : [storeId]).filter(isValidUuid);
+        if (targetIds.length > 0) {
+          query = query.in('store_id', targetIds);
+        } else {
+          return [];
+        }
       }
-      if (userId && !allowedStoreIds && !companyId) query = query.eq('user_id', userId);
+      if (userId && isValidUuid(userId) && !allowedStoreIds && (!companyId || !isValidUuid(companyId))) query = query.eq('user_id', userId);
       if (sku) query = query.eq('sku', sku);
       const { data, error } = await query;
       if (!error && data) return data as InventorySnapshot[];
@@ -325,9 +336,10 @@ export async function getPromotions(
       let query = supabase.from('promotions').select('*');
       if (companyId && isValidUuid(companyId)) query = query.eq('company_id', companyId);
       if (allowedStoreIds && !allowedStoreIds.includes('*')) {
-        query = query.in('store_id', allowedStoreIds.length > 0 ? allowedStoreIds : ['__NONE__']);
+        const validStoreUuids = allowedStoreIds.filter(isValidUuid);
+        query = query.in('store_id', validStoreUuids.length > 0 ? validStoreUuids : [NIL_UUID]);
       }
-      if (userId && !allowedStoreIds && !companyId) query = query.eq('user_id', userId);
+      if (userId && isValidUuid(userId) && !allowedStoreIds && (!companyId || !isValidUuid(companyId))) query = query.eq('user_id', userId);
       const { data, error } = await query;
       if (!error && data) return data as Promotion[];
       if (error) {
@@ -368,12 +380,17 @@ export async function getAlerts(filters?: {
       let query = supabase.from('alerts').select('*').order('risk_score', { ascending: false });
       if (filters?.companyId && isValidUuid(filters.companyId)) query = query.eq('company_id', filters.companyId);
       if (expandedAllowed && !expandedAllowed.includes('*')) {
-        query = query.in('store_id', expandedAllowed.length > 0 ? expandedAllowed : ['__NONE__']);
+        const validStoreUuids = expandedAllowed.filter(isValidUuid);
+        query = query.in('store_id', validStoreUuids.length > 0 ? validStoreUuids : [NIL_UUID]);
       } else if (filters?.storeId && filters.storeId !== 'ALL') {
-        const targetIds = demoStoreId && demoStoreId !== filters.storeId ? [filters.storeId, demoStoreId] : [filters.storeId];
-        query = query.in('store_id', targetIds);
+        const targetIds = (demoStoreId && demoStoreId !== filters.storeId ? [filters.storeId, demoStoreId] : [filters.storeId]).filter(isValidUuid);
+        if (targetIds.length > 0) {
+          query = query.in('store_id', targetIds);
+        } else {
+          return [];
+        }
       }
-      if (filters?.userId && !filters?.allowedStoreIds && !filters?.companyId) query = query.eq('user_id', filters.userId);
+      if (filters?.userId && isValidUuid(filters.userId) && !filters?.allowedStoreIds && (!filters?.companyId || !isValidUuid(filters.companyId))) query = query.eq('user_id', filters.userId);
       if (filters?.risk && filters.risk !== 'ALL') query = query.eq('risk_category', filters.risk);
       if (filters?.status && filters.status !== 'ALL') query = query.eq('status', filters.status);
       const { data, error } = await query;
@@ -435,13 +452,14 @@ export async function getAlertById(
 ): Promise<Alert | null> {
   const expandedAllowed = allowedStoreIds ? expandStoreIds(allowedStoreIds) : undefined;
   const supabase = getDbClient();
-  if (supabase) {
+  if (supabase && isValidUuid(alertId)) {
     try {
       let query = supabase.from('alerts').select('*').eq('id', alertId);
       if (expandedAllowed && !expandedAllowed.includes('*')) {
-        query = query.in('store_id', expandedAllowed.length > 0 ? expandedAllowed : ['__NONE__']);
+        const validStoreUuids = expandedAllowed.filter(isValidUuid);
+        query = query.in('store_id', validStoreUuids.length > 0 ? validStoreUuids : [NIL_UUID]);
       }
-      if (userId && !allowedStoreIds) query = query.eq('user_id', userId);
+      if (userId && isValidUuid(userId) && !allowedStoreIds) query = query.eq('user_id', userId);
       const { data, error } = await query.single();
       if (!error && data) return data as Alert;
     } catch {}
@@ -565,7 +583,11 @@ export async function getAuditLogs(
     try {
       let query = supabase.from('verification_audit_log').select('*').order('created_at', { ascending: false });
       if (companyId && isValidUuid(companyId)) query = query.eq('company_id', companyId);
-      if (alertId) query = query.eq('alert_id', alertId);
+      if (alertId && isValidUuid(alertId)) {
+        query = query.eq('alert_id', alertId);
+      } else if (alertId) {
+        return [];
+      }
       const { data, error } = await query;
       if (!error && data) return data as AuditLogEntry[];
       if (error) {
@@ -601,10 +623,10 @@ export async function getDetectionRuns(
       let query = supabase.from('detection_runs').select('*').order('run_date', { ascending: false });
       if (companyId && isValidUuid(companyId)) query = query.eq('company_id', companyId);
       if (expandedAllowed && !expandedAllowed.includes('*')) {
-        const allowedWithAll = [...expandedAllowed, 'ALL'];
+        const allowedWithAll = [...expandedAllowed.filter(isValidUuid), 'ALL'];
         query = query.in('store_id', allowedWithAll);
       }
-      if (userId && !allowedStoreIds && !companyId) query = query.eq('user_id', userId);
+      if (userId && isValidUuid(userId) && !allowedStoreIds && (!companyId || !isValidUuid(companyId))) query = query.eq('user_id', userId);
       const { data, error } = await query;
       if (!error && data) return data as DetectionRun[];
       if (error) {
@@ -656,61 +678,61 @@ export async function saveDetectionRun(
   });
 
   const supabase = getDbClient();
-  if (supabase) {
-    const { error: runError } = await supabase.from('detection_runs').insert({
-      id: runToInsert.id,
-      user_id: runToInsert.user_id,
-      company_id: runToInsert.company_id,
-      run_date: runToInsert.run_date,
-      store_id: runToInsert.store_id,
-      total_skus_analyzed: runToInsert.total_skus_analyzed,
-      flagged_count: runToInsert.flagged_count,
-      critical_count: runToInsert.critical_count,
-      engine_type: runToInsert.engine_type,
-      parameters: runToInsert.parameters,
-      is_demo: runToInsert.is_demo ?? false,
-      created_at: runToInsert.created_at,
-    });
+  if (supabase && finalUserId && isValidUuid(finalUserId)) {
+    try {
+      const { error: runError } = await supabase.from('detection_runs').insert({
+        id: finalRunId,
+        user_id: finalUserId,
+        company_id: finalCompanyId,
+        run_date: runToInsert.run_date,
+        store_id: runToInsert.store_id,
+        total_skus_analyzed: runToInsert.total_skus_analyzed,
+        flagged_count: runToInsert.flagged_count,
+        critical_count: runToInsert.critical_count,
+        engine_type: runToInsert.engine_type,
+        parameters: runToInsert.parameters,
+        is_demo: runToInsert.is_demo ?? false,
+        created_at: runToInsert.created_at,
+      });
 
-    if (runError) {
-      throw new Error(`Supabase Detection Run Error: ${runError.message}`);
-    }
+      if (!runError && alertsToInsert.length > 0) {
+        const validAlertRows = alertsToInsert
+          .filter((a) => isValidUuid(a.store_id) && isValidUuid(a.product_id))
+          .map((a) => ({
+            id: a.id,
+            user_id: finalUserId,
+            company_id: finalCompanyId,
+            run_id: finalRunId,
+            store_id: a.store_id,
+            store_name: a.store_name,
+            product_id: a.product_id,
+            sku: a.sku,
+            product_name: a.product_name,
+            category: a.category,
+            unit_price: a.unit_price,
+            risk_score: a.risk_score,
+            risk_category: a.risk_category,
+            consecutive_zero_days: a.consecutive_zero_days,
+            recorded_stock: a.recorded_stock,
+            expected_daily_sales: a.expected_daily_sales,
+            est_lost_revenue_daily: a.est_lost_revenue_daily,
+            poisson_anomaly_p: a.poisson_anomaly_p,
+            is_on_promotion: a.is_on_promotion,
+            primary_reason: a.primary_reason,
+            signals: a.signals,
+            status: a.status,
+            is_demo: a.is_demo ?? false,
+            created_at: a.created_at,
+            updated_at: a.updated_at,
+          }));
 
-    if (alertsToInsert.length > 0) {
-      const alertRows = alertsToInsert.map((a) => ({
-        id: a.id,
-        user_id: a.user_id,
-        company_id: a.company_id,
-        run_id: a.run_id,
-        store_id: a.store_id,
-        store_name: a.store_name,
-        product_id: a.product_id,
-        sku: a.sku,
-        product_name: a.product_name,
-        category: a.category,
-        unit_price: a.unit_price,
-        risk_score: a.risk_score,
-        risk_category: a.risk_category,
-        consecutive_zero_days: a.consecutive_zero_days,
-        recorded_stock: a.recorded_stock,
-        expected_daily_sales: a.expected_daily_sales,
-        est_lost_revenue_daily: a.est_lost_revenue_daily,
-        poisson_anomaly_p: a.poisson_anomaly_p,
-        is_on_promotion: a.is_on_promotion,
-        primary_reason: a.primary_reason,
-        signals: a.signals,
-        status: a.status,
-        is_demo: a.is_demo ?? false,
-        created_at: a.created_at,
-        updated_at: a.updated_at,
-      }));
-
-      const { error: alertsError } = await supabase.from('alerts').upsert(alertRows, { onConflict: 'id' });
-      if (alertsError) {
-        throw new Error(`Supabase Alerts Error: ${alertsError.message}`);
+        if (validAlertRows.length > 0) {
+          await supabase.from('alerts').upsert(validAlertRows, { onConflict: 'id' });
+        }
       }
+    } catch (err) {
+      console.warn('[Storage] Supabase saveDetectionRun exception:', err);
     }
-    return;
   }
 
   // Built-in persistent storage fallback
@@ -721,6 +743,7 @@ export async function saveDetectionRun(
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const NIL_UUID = '00000000-0000-0000-0000-000000000000';
 
 export function isValidUuid(val: unknown): val is string {
   return typeof val === 'string' && UUID_REGEX.test(val.trim());
@@ -746,18 +769,18 @@ export async function getImportCatalogContext(
       let storeQuery = supabase.from('stores').select('*');
       if (companyId && isValidUuid(companyId)) {
         storeQuery = storeQuery.eq('company_id', companyId);
-      } else if (userId && !allowedStoreIds) {
+      } else if (userId && isValidUuid(userId) && !allowedStoreIds) {
         storeQuery = storeQuery.eq('user_id', userId);
       }
       if (allowedStoreIds && !allowedStoreIds.includes('*')) {
-        const expanded = expandStoreIds(allowedStoreIds);
-        storeQuery = storeQuery.in('id', expanded.length > 0 ? expanded : ['__NONE__']);
+        const validStoreUuids = expandStoreIds(allowedStoreIds).filter(isValidUuid);
+        storeQuery = storeQuery.in('id', validStoreUuids.length > 0 ? validStoreUuids : [NIL_UUID]);
       }
 
       let prodQuery = supabase.from('products').select('*');
       if (companyId && isValidUuid(companyId)) {
         prodQuery = prodQuery.eq('company_id', companyId);
-      } else if (userId) {
+      } else if (userId && isValidUuid(userId)) {
         prodQuery = prodQuery.eq('user_id', userId);
       }
 
@@ -1005,7 +1028,7 @@ export function isUsingSupabase(): boolean {
 export async function getConversations(userId: string): Promise<ChatConversation[]> {
   if (!userId) return [];
   const supabase = getDbClient();
-  if (supabase) {
+  if (supabase && isValidUuid(userId)) {
     try {
       const { data, error } = await supabase
         .from('chat_conversations')
@@ -1028,7 +1051,7 @@ export async function getConversationById(
 ): Promise<ChatConversation | null> {
   if (!conversationId || !userId) return null;
   const supabase = getDbClient();
-  if (supabase) {
+  if (supabase && isValidUuid(userId) && isValidUuid(conversationId)) {
     try {
       let query = supabase
         .from('chat_conversations')
@@ -1069,7 +1092,7 @@ export async function createConversation(
   };
 
   const supabase = getDbClient();
-  if (supabase) {
+  if (supabase && isValidUuid(userId)) {
     try {
       const { data, error } = await supabase
         .from('chat_conversations')
@@ -1094,7 +1117,7 @@ export async function deleteConversation(
 ): Promise<boolean> {
   if (!conversationId || !userId) return false;
   const supabase = getDbClient();
-  if (supabase) {
+  if (supabase && isValidUuid(userId) && isValidUuid(conversationId)) {
     try {
       let query = supabase
         .from('chat_conversations')
@@ -1134,7 +1157,7 @@ export async function getMessages(
 ): Promise<ChatMessage[]> {
   if (!conversationId || !userId) return [];
   const supabase = getDbClient();
-  if (supabase) {
+  if (supabase && isValidUuid(userId) && isValidUuid(conversationId)) {
     try {
       const { data, error } = await supabase
         .from('chat_messages')
@@ -1177,7 +1200,7 @@ export async function saveMessage(params: {
   };
 
   const supabase = getDbClient();
-  if (supabase) {
+  if (supabase && isValidUuid(userId) && isValidUuid(conversationId)) {
     try {
       const { data, error } = await supabase
         .from('chat_messages')
