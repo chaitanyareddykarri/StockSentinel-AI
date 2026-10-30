@@ -44,7 +44,7 @@ function CallbackHandler() {
         }
 
         timer = setTimeout(() => {
-          router.push(destination);
+          window.location.href = destination;
         }, 850);
       };
 
@@ -61,6 +61,9 @@ function CallbackHandler() {
           }
           if (data?.session?.access_token) {
             document.cookie = `stocksentinel_session=${encodeURIComponent(data.session.access_token)}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+            try {
+              localStorage.setItem('stocksentinel_token', data.session.access_token);
+            } catch {}
           }
           if (data?.user) {
             const meta = data.user.user_metadata || {};
@@ -113,6 +116,9 @@ function CallbackHandler() {
           }
           if (data?.session?.access_token) {
             document.cookie = `stocksentinel_session=${encodeURIComponent(data.session.access_token)}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+            try {
+              localStorage.setItem('stocksentinel_token', data.session.access_token);
+            } catch {}
           }
           if (data?.user) {
             const meta = data.user.user_metadata || {};
