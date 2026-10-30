@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { importCsvRecords, getImportCatalogContext, isValidUuid } from '@/lib/storage';
 import { getAuthenticatedUser } from '@/lib/auth/serverAuth';
+import { isSameOrAliasedStore } from '@/lib/storeResolver';
 
 type ValidEntity = 'stores' | 'products' | 'daily_sales' | 'inventory_snapshots' | 'promotions' | 'combined_sales_inventory';
 
@@ -95,7 +96,7 @@ export async function POST(request: Request) {
 
       // Row-level store authorization and resolution for transaction entities
       if (isTelemetryEntity) {
-        const rowStoreId = String(row.store_id || '').trim();
+        const rowStoreId = String(row.store_id || row.store_code || row.location_id || row.store || '').trim();
         if (!rowStoreId) {
           rowErrors.push(`Row ${rowNum}: Missing required store_id.`);
           continue;
@@ -114,7 +115,13 @@ export async function POST(request: Request) {
         }
 
         // Authorize Store Manager strictly to assigned store (accepts either store UUID or store code)
-        if (userRole === 'STORE_MANAGER' && matchingStore.id !== assignedStore) {
+        const isManagerStore =
+          matchingStore.id === assignedStore ||
+          matchingStore.code === assignedStore ||
+          isSameOrAliasedStore(matchingStore.id, assignedStore) ||
+          isSameOrAliasedStore(matchingStore.code, assignedStore);
+
+        if (userRole === 'STORE_MANAGER' && !isManagerStore) {
           return NextResponse.json(
             {
               success: false,
@@ -138,7 +145,7 @@ export async function POST(request: Request) {
         }
 
         // Resolve product to actual database record (UUID)
-        const rowSku = String(row.sku || '').trim();
+        const rowSku = String(row.sku || row.sku_id || row.product_id || row.item_id || '').trim();
         if (!rowSku) {
           rowErrors.push(`Row ${rowNum}: Missing required sku.`);
           continue;
@@ -393,7 +400,7 @@ export async function POST(request: Request) {
     }
 
     const { inserted, errors } = await importCsvRecords(
-      entityType as ValidEntity,
+      entityType as Exclude<ValidEntity, 'combined_sales_inventory'>,
       validRows,
       auth.user.id,
       'import.csv',

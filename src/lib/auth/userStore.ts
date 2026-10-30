@@ -428,25 +428,28 @@ export async function findCompanyMembership(userId: string): Promise<StandaloneC
   let m = membershipsCache.get(userId);
   if (!m) {
     const user = await findUserById(userId);
-    if (user && user.email === 'manager@stocksentinel.ai') {
+    if (user && (user.email === 'manager@stocksentinel.ai' || user.email === 'director@stocksentinel.ai')) {
       const companyId = 'd583f02b-055c-463e-9355-f4677b54f3bc';
       const storeId = 'f6aa88e5-0dba-4285-bc00-9250a43ceb85';
+      const isDirector = user.email === 'director@stocksentinel.ai' || user.role === 'COMPANY_MANAGER';
       m = {
         userId: user.id,
         companyId,
         companyName: 'Test Retail Corp',
         companySlug: 'retail-ops',
-        role: user.role === 'COMPANY_MANAGER' ? 'COMPANY_MANAGER' : 'STORE_MANAGER',
+        role: isDirector ? 'COMPANY_MANAGER' : 'STORE_MANAGER',
         status: 'ACTIVE',
         companyStatus: 'ACTIVE',
       };
       membershipsCache.set(userId, m);
-      assignmentsCache.set(userId, {
-        userId: user.id,
-        companyId,
-        storeId,
-        storeName: 'Downtown Supercenter #101',
-      });
+      if (!isDirector) {
+        assignmentsCache.set(userId, {
+          userId: user.id,
+          companyId,
+          storeId,
+          storeName: 'Downtown Supercenter #101',
+        });
+      }
       companyStoresCache.set(companyId, [
         { id: storeId, name: 'Downtown Supercenter #101', code: 'SEA-101', location: 'Seattle, WA' },
       ]);

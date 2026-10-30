@@ -6,6 +6,8 @@ import {
   updatePassword,
   createSession,
 } from '@/lib/auth/userStore';
+import { resolveUserRoleAndPermissions } from '@/lib/auth/serverAuth';
+import { isSupabaseServerConfigured } from '@/lib/db/supabaseServer';
 
 export async function POST(request: Request) {
   try {
@@ -55,12 +57,27 @@ export async function POST(request: Request) {
 
     const token = await createSession(user);
 
+    // Resolve authoritative role, company, and store assignment
+    const permissions = await resolveUserRoleAndPermissions(
+      user.id,
+      isSupabaseServerConfigured() ? 'supabase' : 'standalone',
+      user.role
+    );
+    const resolvedRole = permissions.accessState || user.role;
+
     const safeUser = {
       id: user.id,
       email: user.email,
       name: user.name,
-      storeName: user.storeName,
-      role: user.role,
+      storeName: permissions.assignedStoreName || user.storeName,
+      role: resolvedRole,
+      accessState: resolvedRole,
+      companyId: permissions.companyId,
+      companyName: permissions.companyName,
+      companySlug: permissions.companySlug,
+      assignedStoreId: permissions.assignedStoreId,
+      assignedStoreName: permissions.assignedStoreName,
+      accessibleStoreIds: permissions.accessibleStoreIds,
       avatarUrl: user.avatarUrl,
     };
 
