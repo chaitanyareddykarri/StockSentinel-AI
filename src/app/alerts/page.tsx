@@ -28,7 +28,19 @@ export default function AlertsPage() {
   const fetchAlerts = useCallback(async () => {
     try {
       setFetchError(null);
-      const res = await fetch('/api/alerts');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('stocksentinel_token') : null;
+      if (storedToken) headers['Authorization'] = `Bearer ${storedToken}`;
+
+      const res = await fetch('/api/alerts', { headers });
+      if (res.status === 401) {
+        window.location.href = '/login';
+        return;
+      }
+      if (res.status === 403) {
+        window.location.href = '/access-status?status=pending';
+        return;
+      }
       if (!res.ok) throw new Error('Failed to fetch alerts.');
       const data = await res.json();
       if (data.alerts) {

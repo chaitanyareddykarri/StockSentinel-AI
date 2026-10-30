@@ -817,6 +817,10 @@ export async function getImportCatalogContext(
 
   if (companyId) {
     stores = stores.filter((s) => {
+      // Reject stores that explicitly belong to another company
+      if (s.company_id && s.company_id !== companyId && s.company_id !== '00000000-0000-0000-0000-000000000001') {
+        return false;
+      }
       // 1. Store belongs explicitly to the user's company
       if (s.company_id === companyId) return true;
       // 2. Unowned demo stores (null or undefined company_id)

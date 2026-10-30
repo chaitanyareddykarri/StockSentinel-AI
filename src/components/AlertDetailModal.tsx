@@ -101,9 +101,13 @@ function AlertDetailModalInner({
     setAiLoading(true);
     setAiMessage(null);
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('stocksentinel_token') : null;
+      if (storedToken) headers['Authorization'] = `Bearer ${storedToken}`;
+
       const res = await fetch('/api/ai/analyze', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           sku: alert.sku,
           productName: alert.product_name,
@@ -137,9 +141,13 @@ function AlertDetailModalInner({
   const handleVerifySubmit = async (newStatus: AlertStatus) => {
     setIsSubmitting(true);
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('stocksentinel_token') : null;
+      if (storedToken) headers['Authorization'] = `Bearer ${storedToken}`;
+
       const res = await fetch('/api/alerts', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           alertId: alert.id,
           status: newStatus,

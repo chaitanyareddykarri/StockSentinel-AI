@@ -533,6 +533,16 @@ export function addCompanyStore(
   }
 }
 
+export function isStoreOwnedByOtherCompany(storeId: string, currentCompanyId?: string): boolean {
+  for (const [compId, stores] of companyStoresCache.entries()) {
+    if (currentCompanyId && compId === currentCompanyId) continue;
+    if (stores.some((s) => s.id === storeId || (s.code && s.code === storeId))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export async function getStoreAssignmentsForCompany(companyId: string): Promise<StandaloneStoreAssignment[]> {
   if (isSupabaseServerConfigured() && isValidUuid(companyId)) {
     const supabase = getSupabaseServerClient();

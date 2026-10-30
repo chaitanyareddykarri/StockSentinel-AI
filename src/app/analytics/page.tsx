@@ -93,10 +93,26 @@ export default function AnalyticsPage() {
             ? `?storeId=${encodeURIComponent(effectiveStore)}`
             : '';
 
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        const storedToken = typeof window !== 'undefined' ? localStorage.getItem('stocksentinel_token') : null;
+        if (storedToken) {
+          headers['Authorization'] = `Bearer ${storedToken}`;
+        }
+
         const [alertsRes, metricsRes] = await Promise.all([
-          fetch(`/api/alerts${queryParam}`),
-          fetch(`/api/metrics${queryParam}`),
+          fetch(`/api/alerts${queryParam}`, { headers }),
+          fetch(`/api/metrics${queryParam}`, { headers }),
         ]);
+
+        if (alertsRes.status === 401 || metricsRes.status === 401) {
+          window.location.href = '/login';
+          return;
+        }
+
+        if (alertsRes.status === 403 || metricsRes.status === 403) {
+          window.location.href = '/access-status?status=pending';
+          return;
+        }
 
         if (metricsRes.ok) {
           const metricsData = await metricsRes.json();

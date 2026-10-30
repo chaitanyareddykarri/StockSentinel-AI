@@ -35,8 +35,14 @@ export function resolveDemoStoreId(storeRef?: string | null, storeList?: Store[]
   if (ref === 'store-001' || ref === 'store-002' || ref === 'store-003') {
     return ref;
   }
-  if (ref === 'f6aa88e5-0dba-4285-bc00-9250a43ceb85') {
+  if (ref === 'f6aa88e5-0dba-4285-bc00-9250a43ceb85' || ref === '2f14e2f2-37c8-44c5-8c28-d9a2a2a81543') {
     return 'store-001';
+  }
+  if (ref === '0ca79c80-6a14-4471-b954-66d0f57cbb73') {
+    return 'store-002';
+  }
+  if (ref === 'ef65c827-ae77-4517-a3e8-c9cfb65d3d75') {
+    return 'store-003';
   }
 
   // 2. Onboarding store ID pattern: store_<slug>_<index> (e.g. store_retailops_1, store_mycompany_2)

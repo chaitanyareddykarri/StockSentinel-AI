@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { importCsvRecords, getImportCatalogContext, isValidUuid } from '@/lib/storage';
 import { getAuthenticatedUser } from '@/lib/auth/serverAuth';
 import { isSameOrAliasedStore } from '@/lib/storeResolver';
+import { isStoreOwnedByOtherCompany } from '@/lib/auth/userStore';
 
 type ValidEntity = 'stores' | 'products' | 'daily_sales' | 'inventory_snapshots' | 'promotions' | 'combined_sales_inventory';
 
@@ -106,10 +107,42 @@ export async function POST(request: Request) {
         const matchingStore = catalogContext?.stores.find(
           (s) =>
             s.id.toLowerCase() === rowStoreId.toLowerCase() ||
-            s.code.toLowerCase() === rowStoreId.toLowerCase()
+            s.code.toLowerCase() === rowStoreId.toLowerCase() ||
+            isSameOrAliasedStore(s.id, rowStoreId) ||
+            isSameOrAliasedStore(s.code, rowStoreId)
         );
 
         if (!matchingStore) {
+          // Store Manager cannot import records for another store
+          if (userRole === 'STORE_MANAGER' && assignedStore) {
+            const isManagerStore =
+              rowStoreId === assignedStore ||
+              isSameOrAliasedStore(rowStoreId, assignedStore);
+
+            if (!isManagerStore) {
+              return NextResponse.json(
+                {
+                  success: false,
+                  error: `Access denied on Row ${rowNum}: Store managers can only import records for their assigned store (${assignedStore}). Row references '${rowStoreId}'.`,
+                  inserted: 0,
+                },
+                { status: 403 }
+              );
+            }
+          }
+
+          // Company Manager cannot import records for stores owned by another company
+          if (userRole === 'COMPANY_MANAGER' && isStoreOwnedByOtherCompany(rowStoreId, auth.user.companyId)) {
+            return NextResponse.json(
+              {
+                success: false,
+                error: `Access denied on Row ${rowNum}: Store '${rowStoreId}' does not belong to your company.`,
+                inserted: 0,
+              },
+              { status: 403 }
+            );
+          }
+
           rowErrors.push(`Row ${rowNum}: Store '${rowStoreId}' was not found in store catalog. Please import stores first.`);
           continue;
         }
@@ -133,7 +166,16 @@ export async function POST(request: Request) {
         }
 
         // Authorize Company Manager strictly to company stores
-        if (userRole === 'COMPANY_MANAGER' && !accessibleStores.includes(matchingStore.id)) {
+        const isStoreInCompany =
+          (matchingStore.company_id && auth.user.companyId && matchingStore.company_id === auth.user.companyId) ||
+          (accessibleStores.length > 0 && (
+            accessibleStores.includes(matchingStore.id) ||
+            (matchingStore.code && accessibleStores.includes(matchingStore.code)) ||
+            accessibleStores.some((sId) => isSameOrAliasedStore(sId, matchingStore.id))
+          )) ||
+          (!matchingStore.company_id || matchingStore.company_id === '00000000-0000-0000-0000-000000000001');
+
+        if (userRole === 'COMPANY_MANAGER' && (!isStoreInCompany || isStoreOwnedByOtherCompany(matchingStore.id, auth.user.companyId) || isStoreOwnedByOtherCompany(rowStoreId, auth.user.companyId))) {
           return NextResponse.json(
             {
               success: false,
