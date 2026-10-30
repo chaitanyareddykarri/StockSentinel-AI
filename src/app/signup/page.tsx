@@ -107,7 +107,7 @@ export default function SignupPage() {
         }
 
         setTimeout(() => {
-          router.push(destination);
+          window.location.href = destination;
         }, 850);
       }
     } catch {
@@ -134,7 +134,7 @@ export default function SignupPage() {
         setSuccessMessage('Account authenticated! Preparing your workspace...');
         setIsSuccessTransition(true);
         setTimeout(() => {
-          router.push('/dashboard');
+          window.location.href = '/dashboard';
         }, 850);
       }
     } catch {

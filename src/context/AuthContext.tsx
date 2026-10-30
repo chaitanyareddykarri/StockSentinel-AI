@@ -346,7 +346,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       storeName?: string
     ): Promise<{ error?: string; needsEmailConfirmation?: boolean }> => {
       const supabase = getSupabaseClient();
+      let supabaseSessionToken: string | null = null;
 
+      // 1. If Supabase is configured, attempt Supabase Auth registration
       if (supabase) {
         try {
           const { data, error } = await supabase.auth.signUp({
@@ -359,25 +361,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               },
             },
           });
-          if (error) return { error: error.message };
-          if (data.user) {
-            if (data.session?.access_token) {
-              if (typeof document !== 'undefined') {
-                document.cookie = `stocksentinel_session=${encodeURIComponent(data.session.access_token)}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
-              }
-              await refreshSession();
-              return {};
-            }
-            // Supabase requires email verification before session is issued
-            return { needsEmailConfirmation: true };
+
+          if (!error && data?.session?.access_token) {
+            supabaseSessionToken = data.session.access_token;
           }
-          return {};
-        } catch (err: unknown) {
-          return { error: err instanceof Error ? err.message : 'Supabase registration failed.' };
+        } catch {
+          // Gracefully continue to server registration fallback
         }
       }
 
-      // Standalone fallback
+      // 2. Always register with StockSentinel server session to ensure instant access
       try {
         const res = await fetch('/api/auth/register', {
           method: 'POST',
@@ -387,11 +380,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         const data = await res.json();
         if (!res.ok || data.error) {
+          // If already exists in server, attempt direct sign in
+          if (data.error && data.error.includes('already exists')) {
+            const loginRes = await fetch('/api/auth/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email, password }),
+            });
+            const loginData = await loginRes.json();
+            if (loginRes.ok && loginData.token) {
+              if (typeof document !== 'undefined') {
+                document.cookie = `stocksentinel_session=${encodeURIComponent(loginData.token)}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+              }
+              await refreshSession();
+              return {};
+            }
+          }
           return { error: data.error || 'Failed to create account.' };
         }
 
-        if (data.token && typeof document !== 'undefined') {
-          document.cookie = `stocksentinel_session=${encodeURIComponent(data.token)}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+        const effectiveToken = supabaseSessionToken || data.token;
+        if (effectiveToken && typeof document !== 'undefined') {
+          document.cookie = `stocksentinel_session=${encodeURIComponent(effectiveToken)}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
         }
 
         await refreshSession();
