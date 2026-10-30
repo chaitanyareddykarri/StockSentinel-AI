@@ -10,20 +10,61 @@ export interface CategoryVulnerability {
   barColor: string;
 }
 
+export type CurrencyCode = 'INR' | 'USD';
+
+export interface CalculationStep {
+  label: string;
+  expression: string;
+  result: string;
+}
+
 export interface RoiSimulationParams {
   dailyWalks: number;
   avgLostPerPhantom?: number;
   detectionAccuracy?: number;
+  currency?: CurrencyCode;
+  exchangeRate?: number;
 }
 
 export interface RoiSimulationResult {
   dailyWalks: number;
   avgLostPerPhantom: number;
   detectionAccuracy: number;
+  currency: CurrencyCode;
+  exchangeRate: number;
   dailyRecovered: number;
   monthlyRecovered: number;
   annualRecovered: number;
+  dailyRecoveredRupees: number;
+  monthlyRecoveredRupees: number;
+  annualRecoveredRupees: number;
+  formattedDaily: string;
+  formattedMonthly: string;
+  formattedAnnual: string;
+  formattedIndianSummary: string;
   formula: string;
+  calculationSteps: CalculationStep[];
+}
+
+/**
+ * Formats a currency amount in Indian Lakhs and Crores notation
+ * e.g. 14,800,000 => "₹1.48 Cr", 450,000 => "₹4.50 L"
+ */
+export function formatIndianCurrency(amount: number): string {
+  if (amount >= 10000000) {
+    return `₹${(amount / 10000000).toFixed(2)} Cr`;
+  }
+  if (amount >= 100000) {
+    return `₹${(amount / 100000).toFixed(2)} L`;
+  }
+  return `₹${Math.round(amount).toLocaleString('en-IN')}`;
+}
+
+export function formatCurrencyAmount(amount: number, currency: CurrencyCode): string {
+  if (currency === 'INR') {
+    return `₹${Math.round(amount).toLocaleString('en-IN')}`;
+  }
+  return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 export interface BenchmarkMetrics {
@@ -73,25 +114,78 @@ export const INDUSTRY_REFERENCE_CATEGORIES: CategoryVulnerability[] = [
 
 /**
  * Calculates interactive ROI recovery opportunity from documented simulation parameters.
- * Formula: dailyWalks * avgLostPerPhantom * detectionAccuracy * 30 days.
+ * Provides transparent step-by-step breakdown supporting both INR (₹) and USD ($).
+ * Formula: dailyWalks * avgLostPerPhantom * detectionAccuracy * 30 days (monthly) * 12 (annual).
  */
 export function calculateRoiSimulation({
   dailyWalks,
   avgLostPerPhantom = 48.5,
   detectionAccuracy = 0.85,
+  currency = 'USD',
+  exchangeRate = 83.5,
 }: RoiSimulationParams): RoiSimulationResult {
   const dailyRecovered = dailyWalks * avgLostPerPhantom * detectionAccuracy;
   const monthlyRecovered = Math.round(dailyRecovered * 30);
   const annualRecovered = Math.round(monthlyRecovered * 12);
 
+  // Compute Indian Rupees values
+  const dailyRecoveredRupees = currency === 'INR'
+    ? dailyRecovered
+    : Math.round(dailyRecovered * exchangeRate);
+  const monthlyRecoveredRupees = currency === 'INR'
+    ? monthlyRecovered
+    : Math.round(monthlyRecovered * exchangeRate);
+  const annualRecoveredRupees = currency === 'INR'
+    ? annualRecovered
+    : Math.round(annualRecovered * exchangeRate);
+
+  const symbol = currency === 'INR' ? '₹' : '$';
+  const calculationSteps: CalculationStep[] = [
+    {
+      label: '1. Daily Shelf Investigations',
+      expression: `${dailyWalks} walks/day prioritized by model`,
+      result: `${dailyWalks} inspections/day`,
+    },
+    {
+      label: '2. Associate Resolution Rate',
+      expression: `${dailyWalks} walks × ${(detectionAccuracy * 100).toFixed(0)}% verification accuracy`,
+      result: `${(dailyWalks * detectionAccuracy).toFixed(1)} phantoms restocked/day`,
+    },
+    {
+      label: '3. Daily Revenue Recovered',
+      expression: `${(dailyWalks * detectionAccuracy).toFixed(1)} × ${symbol}${avgLostPerPhantom.toFixed(2)} avg daily loss`,
+      result: `${formatCurrencyAmount(dailyRecovered, currency)}/day`,
+    },
+    {
+      label: '4. Annual Revenue Recovered',
+      expression: `${formatCurrencyAmount(monthlyRecovered, currency)}/month × 12 months`,
+      result: currency === 'INR' ? formatIndianCurrency(annualRecovered) : `$${annualRecovered.toLocaleString()}`,
+    },
+    {
+      label: '5. Talentap Problem R1 Indian Rupee Benchmark',
+      expression: `Converted at ₹${exchangeRate.toFixed(2)}/USD`,
+      result: `${formatIndianCurrency(annualRecoveredRupees)} (₹${annualRecoveredRupees.toLocaleString('en-IN')})`,
+    },
+  ];
+
   return {
     dailyWalks,
     avgLostPerPhantom,
     detectionAccuracy,
+    currency,
+    exchangeRate,
     dailyRecovered: Number(dailyRecovered.toFixed(2)),
     monthlyRecovered,
     annualRecovered,
-    formula: `${dailyWalks} walks/day × $${avgLostPerPhantom.toFixed(2)}/phantom × ${(detectionAccuracy * 100).toFixed(0)}% accuracy × 30 days`,
+    dailyRecoveredRupees,
+    monthlyRecoveredRupees,
+    annualRecoveredRupees,
+    formattedDaily: formatCurrencyAmount(dailyRecovered, currency),
+    formattedMonthly: formatCurrencyAmount(monthlyRecovered, currency),
+    formattedAnnual: formatCurrencyAmount(annualRecovered, currency),
+    formattedIndianSummary: formatIndianCurrency(annualRecoveredRupees),
+    formula: `${dailyWalks} walks/day × ${symbol}${avgLostPerPhantom.toFixed(2)}/phantom × ${(detectionAccuracy * 100).toFixed(0)}% accuracy × 30 days`,
+    calculationSteps,
   };
 }
 
@@ -158,4 +252,3 @@ export function calculateCategoryVulnerability(alerts: Alert[]): CategoryVulnera
   categories.sort((a, b) => b.riskIndex - a.riskIndex || b.incidentCount - a.incidentCount);
   return categories;
 }
-

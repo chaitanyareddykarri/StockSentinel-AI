@@ -1,0 +1,4 @@
+store_id,sku,start_date,end_date,discount_pct,promo_type
+SEA-101,SKU-104,2026-10-20,2026-10-31,20.0,FEATURE
+BEL-204,SKU-101,2026-10-22,2026-10-31,15.0,ENDCAP
+

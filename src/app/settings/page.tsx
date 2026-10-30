@@ -164,9 +164,9 @@ export default function SettingsPage() {
             </p>
 
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-[11px] font-mono text-slate-600 space-y-1">
-              <p className="text-slate-400 font-semibold">Enterprise Schema Migration:</p>
-              <p className="text-emerald-800 font-semibold">supabase/migrations/20261018000001_secure_schema.sql</p>
-              <p className="text-slate-500">Also available in root: schema.sql (Copy into Supabase SQL Editor)</p>
+              <p className="text-slate-400 font-semibold">Authoritative Enterprise Schema (v3.5.0):</p>
+              <p className="text-emerald-800 font-semibold">supabase/schema/complete_schema_v3.5.sql</p>
+              <p className="text-slate-500">Chronological migrations available in: supabase/migrations/</p>
             </div>
           </div>
 
@@ -198,3 +198,4 @@ export default function SettingsPage() {
     </AppShell>
   );
 }
+

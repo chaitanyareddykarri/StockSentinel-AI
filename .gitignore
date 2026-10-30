@@ -41,11 +41,19 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# local persistent runtime data
-/data/
+# local persistent runtime data & data caches
+/data/*.json
+/data/raw/*
+!/data/raw/.gitkeep
+/data/interim/*
+!/data/interim/.gitkeep
+/data/processed/*
+!/data/processed/.gitkeep
 
 # local agent and assistant state
 .agents/
 skills-lock.json
 
-
+# python bytecode
+__pycache__/
+*.pyc

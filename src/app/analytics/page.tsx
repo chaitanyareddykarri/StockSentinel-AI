@@ -13,6 +13,9 @@ import {
   Package,
   ShieldCheck,
   Info,
+  Calculator,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { Alert, DashboardMetrics, Store } from '@/types';
 import {
@@ -20,6 +23,7 @@ import {
   calculateCategoryVulnerability,
   OFFLINE_EVALUATE_BENCHMARK,
   INDUSTRY_REFERENCE_CATEGORIES,
+  CurrencyCode,
 } from '@/lib/analytics';
 
 export default function AnalyticsPage() {
@@ -48,6 +52,8 @@ export default function AnalyticsPage() {
   });
 
   const [dailyWalks, setDailyWalks] = useState<number>(12);
+  const [currency, setCurrency] = useState<CurrencyCode>('INR');
+  const [showCalculationSteps, setShowCalculationSteps] = useState<boolean>(true);
 
   // Access State Protection: Redirect pending or suspended accounts
   useEffect(() => {
@@ -132,8 +138,13 @@ export default function AnalyticsPage() {
 
   // ROI Simulation calculations
   const simulation = useMemo(
-    () => calculateRoiSimulation({ dailyWalks }),
-    [dailyWalks]
+    () =>
+      calculateRoiSimulation({
+        dailyWalks,
+        currency,
+        avgLostPerPhantom: currency === 'INR' ? 3850 : 48.5,
+      }),
+    [dailyWalks, currency]
   );
 
   // Authentic department vulnerability from live operational alerts
@@ -347,9 +358,36 @@ export default function AnalyticsPage() {
         {/* Revenue Recovery Simulator */}
         <div className="bg-white/95 rounded-2xl border border-slate-200/80 p-5 sm:p-6 shadow-xs space-y-5 flex flex-col justify-between">
           <div>
-            <div className="flex items-center space-x-2 text-slate-900 font-bold text-base mb-1">
-              <DollarSign className="w-5 h-5 text-emerald-700" />
-              <h2>Recovered Revenue Impact Simulator</h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1">
+              <div className="flex items-center space-x-2 text-slate-900 font-bold text-base">
+                <DollarSign className="w-5 h-5 text-emerald-700" />
+                <h2>Recovered Revenue Impact Simulator</h2>
+              </div>
+              {/* Currency Selector */}
+              <div className="flex items-center space-x-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200 self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setCurrency('INR')}
+                  className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                    currency === 'INR'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  INR (Problem R1)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrency('USD')}
+                  className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                    currency === 'USD'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  $ USD
+                </button>
+              </div>
             </div>
             <p className="text-xs text-slate-500">
               Interactive scenario projection estimating potential sales recovered when store associates
@@ -389,10 +427,10 @@ export default function AnalyticsPage() {
                 Est. Monthly Opportunity
               </span>
               <h4 className="text-2xl font-extrabold text-slate-900 mt-1 font-mono">
-                ${simulation.monthlyRecovered.toLocaleString()}
+                {simulation.formattedMonthly}
               </h4>
               <p className="text-[10px] text-emerald-700 mt-0.5 font-medium">
-                Direct shelf recovery potential
+                {currency === 'INR' ? `Approx $${simulation.monthlyRecovered.toLocaleString()} USD` : 'Direct shelf recovery potential'}
               </p>
             </div>
 
@@ -401,25 +439,48 @@ export default function AnalyticsPage() {
                 Est. Annual Opportunity
               </span>
               <h4 className="text-2xl font-extrabold text-slate-900 mt-1 font-mono">
-                ${simulation.annualRecovered.toLocaleString()}
+                {currency === 'INR' ? simulation.formattedIndianSummary : simulation.formattedAnnual}
               </h4>
               <p className="text-[10px] text-indigo-700 mt-0.5 font-medium">
-                Across active store network
+                {currency === 'INR'
+                  ? `INR ${simulation.annualRecoveredRupees.toLocaleString('en-IN')}`
+                  : `Approx ${simulation.formattedIndianSummary} INR`}
               </p>
             </div>
           </div>
 
-          <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/70 text-[11px] text-slate-500 space-y-1">
-            <div className="flex items-center space-x-1 font-semibold text-slate-700">
-              <Info className="w-3.5 h-3.5 text-slate-400" />
-              <span>Simulation Modeling Assumptions:</span>
+          {/* Transparent Calculation Breakdown Accordion (Problem R1 Outcome) */}
+          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-2 text-xs">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-1.5 font-bold text-slate-800">
+                <Calculator className="w-4 h-4 text-emerald-700" />
+                <span>Transparent Calculation Breakdown (Problem R1 Outcome)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCalculationSteps((prev) => !prev)}
+                className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 flex items-center space-x-0.5 cursor-pointer"
+              >
+                <span>{showCalculationSteps ? 'Collapse' : 'Expand'}</span>
+                {showCalculationSteps ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
             </div>
-            <p>
-              Calculated using standard retail baseline parameters: $
-              {simulation.avgLostPerPhantom.toFixed(2)} avg daily loss per phantom SKU and{' '}
-              {(simulation.detectionAccuracy * 100).toFixed(0)}% associate verification resolution.
-              Formula: <code className="font-mono text-[10px] bg-white px-1 py-0.5 rounded border border-slate-200 text-slate-700">{simulation.formula}</code>.
-            </p>
+
+            {showCalculationSteps && (
+              <div className="space-y-1.5 pt-1 border-t border-slate-200/60">
+                {simulation.calculationSteps.map((step, idx) => (
+                  <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] py-1 border-b border-slate-200/40 last:border-b-0 gap-1">
+                    <span className="font-semibold text-slate-700">{step.label}</span>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-mono text-slate-500">{step.expression}</span>
+                      <span className="font-mono font-bold text-emerald-800 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                        {step.result}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

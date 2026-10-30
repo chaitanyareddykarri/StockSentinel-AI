@@ -1,12 +1,18 @@
 {
-  "name": "anits",
-  "version": "0.1.0",
+  "name": "stocksentinel-ai",
+  "version": "2.0.0",
+  "description": "Retail Inventory Intelligence Platform for Phantom Stock-Out Detection (Talentap Hackathon Problem R1)",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --loader ./tests/ts-resolver.mjs --test tests/*.test.ts",
+    "test:ml": "py -m unittest discover -s ml/tests || python -m unittest discover -s ml/tests",
+    "evaluate": "py scripts/run_evaluation.py || python scripts/run_evaluation.py",
+    "validate:data": "py scripts/validate_data.py || python scripts/validate_data.py",
+    "detect:batch": "py scripts/run_detection.py || python scripts/run_detection.py"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

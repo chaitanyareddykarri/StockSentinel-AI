@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
+const readSql = (p: string) => fs.readFileSync(p, 'utf-8').replace(/\r\n/g, '\n');
 const MIGRATION_PATH = path.join(process.cwd(), 'supabase', 'migrations', '20261029000000_multi_tenant_rbac_schema.sql');
-const ROLLBACK_PATH = path.join(process.cwd(), 'supabase', 'migrations', '20261029000000_multi_tenant_rbac_rollback.sql');
+const ROLLBACK_PATH = fs.existsSync(path.join(process.cwd(), 'supabase', 'rollbacks', '20261029000000_multi_tenant_rbac_rollback.sql')) ? path.join(process.cwd(), 'supabase', 'rollbacks', '20261029000000_multi_tenant_rbac_rollback.sql') : path.join(process.cwd(), 'supabase', 'migrations', '20261029000000_multi_tenant_rbac_rollback.sql');
 const TEST_SQL_PATH = path.join(process.cwd(), 'supabase', 'tests', '20261029000000_test_rbac_isolation.sql');
 
 test('1. Migration, Rollback, and Test SQL files exist with valid timestamps and content', () => {
@@ -12,15 +13,15 @@ test('1. Migration, Rollback, and Test SQL files exist with valid timestamps and
   assert.ok(fs.existsSync(ROLLBACK_PATH), 'Rollback SQL file must exist');
   assert.ok(fs.existsSync(TEST_SQL_PATH), 'Transactional test runner SQL must exist');
 
-  const migrationContent = fs.readFileSync(MIGRATION_PATH, 'utf-8');
+  const migrationContent = readSql(MIGRATION_PATH);
   assert.ok(migrationContent.length > 1000, 'Migration file must contain full implementation content');
 
-  const rollbackContent = fs.readFileSync(ROLLBACK_PATH, 'utf-8');
+  const rollbackContent = readSql(ROLLBACK_PATH);
   assert.ok(rollbackContent.length > 500, 'Rollback file must contain full rollback content');
 });
 
 test('2. Authorization helpers are strictly caller-anchored with zero arbitrary-user parameters and active status check', () => {
-  const sql = fs.readFileSync(MIGRATION_PATH, 'utf-8');
+  const sql = readSql(MIGRATION_PATH);
 
   // Verify functions are defined without arbitrary user parameter
   assert.ok(sql.includes('FUNCTION public.is_platform_admin()\nRETURNS BOOLEAN'), 'is_platform_admin must be parameterless');
@@ -44,7 +45,7 @@ test('2. Authorization helpers are strictly caller-anchored with zero arbitrary-
 });
 
 test('3. Legacy data backfill strictly targets verified demo records and secures unassigned view', () => {
-  const sql = fs.readFileSync(MIGRATION_PATH, 'utf-8');
+  const sql = readSql(MIGRATION_PATH);
 
   // Must NOT use blanket text matching like name ILIKE '%demo%' or blind WHERE company_id IS NULL
   assert.ok(!sql.includes("name ILIKE '%demo%'"), 'Must not use blanket name pattern matching for backfill');
@@ -60,7 +61,7 @@ test('3. Legacy data backfill strictly targets verified demo records and secures
 });
 
 test('4. Compound constraints prevent cross-company assignments, mismatched stores, and non-member assignments', () => {
-  const sql = fs.readFileSync(MIGRATION_PATH, 'utf-8');
+  const sql = readSql(MIGRATION_PATH);
 
   // Compound unique on stores (id, company_id)
   assert.ok(sql.includes('CONSTRAINT uq_stores_id_company UNIQUE (id, company_id)'), 'Compound unique on stores');
@@ -81,7 +82,7 @@ test('4. Compound constraints prevent cross-company assignments, mismatched stor
 });
 
 test('5. Transactional onboarding function enforces bounds, anti-spam, and atomic membership', () => {
-  const sql = fs.readFileSync(MIGRATION_PATH, 'utf-8');
+  const sql = readSql(MIGRATION_PATH);
 
   // Function definition
   assert.ok(sql.includes('FUNCTION public.onboard_company('), 'onboard_company function must exist');
@@ -95,7 +96,7 @@ test('5. Transactional onboarding function enforces bounds, anti-spam, and atomi
 });
 
 test('6. Row-Level Security policies strictly restrict roles and prevent self-escalation', () => {
-  const sql = fs.readFileSync(MIGRATION_PATH, 'utf-8');
+  const sql = readSql(MIGRATION_PATH);
 
   // Company memberships: Company managers cannot modify their own record or escalate to COMPANY_MANAGER
   assert.ok(sql.includes("role = 'STORE_MANAGER' -- Company Manager cannot grant COMPANY_MANAGER"), 'Company manager can only invite STORE_MANAGER');
@@ -114,7 +115,7 @@ test('6. Row-Level Security policies strictly restrict roles and prevent self-es
 });
 
 test('7. Rollback script symmetrically reverses all additions without dropping pre-existing schema', () => {
-  const rollback = fs.readFileSync(ROLLBACK_PATH, 'utf-8');
+  const rollback = readSql(ROLLBACK_PATH);
 
   // Drops functions including onboard_company and accept_invitation
   assert.ok(rollback.includes('DROP FUNCTION IF EXISTS public.accept_invitation(TEXT);'), 'Drops accept_invitation');
@@ -149,7 +150,7 @@ test('7. Rollback script symmetrically reverses all additions without dropping p
 });
 
 test('8. Transactional SQL test harness contains 10 rigorous assertion suites with auth.users fixtures', () => {
-  const testSql = fs.readFileSync(TEST_SQL_PATH, 'utf-8');
+  const testSql = readSql(TEST_SQL_PATH);
 
   assert.ok(testSql.includes('BEGIN;'), 'Test must start transaction');
   assert.ok(testSql.includes('ROLLBACK;'), 'Test must cleanly rollback transaction');
@@ -163,7 +164,7 @@ test('8. Transactional SQL test harness contains 10 rigorous assertion suites wi
 });
 
 test('9. Database-level invitation acceptance function enforces concurrency lock and identity checks', () => {
-  const sql = fs.readFileSync(MIGRATION_PATH, 'utf-8');
+  const sql = readSql(MIGRATION_PATH);
 
   assert.ok(sql.includes('FUNCTION public.accept_invitation('), 'accept_invitation function must exist');
   assert.ok(sql.includes('#variable_conflict use_column'), 'accept_invitation must specify #variable_conflict use_column to eliminate company_id ambiguity');
@@ -174,7 +175,7 @@ test('9. Database-level invitation acceptance function enforces concurrency lock
 });
 
 test('10. Legacy record access policies secure unassigned records strictly to original creator via user_id', () => {
-  const sql = fs.readFileSync(MIGRATION_PATH, 'utf-8');
+  const sql = readSql(MIGRATION_PATH);
 
   // Stores UPDATE & DELETE legacy creator access
   assert.ok(
@@ -241,7 +242,7 @@ test('10. Legacy record access policies secure unassigned records strictly to or
 });
 
 test('11. Dynamic logic evaluation of extracted SQL expressions validates multi-tenant RBAC invariants', () => {
-  const sql = fs.readFileSync(MIGRATION_PATH, 'utf-8');
+  const sql = readSql(MIGRATION_PATH);
 
   function extractClauses(policyName: string): { usingSql: string; withCheckSql?: string } {
     const policyIdx = sql.indexOf(`"${policyName}"`);
@@ -384,8 +385,8 @@ test('11. Dynamic logic evaluation of extracted SQL expressions validates multi-
 });
 
 test('12. Chat policies and all table RLS replacements are idempotent and drop both legacy and new names', () => {
-  const migrationSql = fs.readFileSync(MIGRATION_PATH, 'utf-8');
-  const rollbackSql = fs.readFileSync(ROLLBACK_PATH, 'utf-8');
+  const migrationSql = readSql(MIGRATION_PATH);
+  const rollbackSql = readSql(ROLLBACK_PATH);
 
   // Verify Migration 4 explicitly drops both legacy and new policy names on chat tables before creating new policies
   assert.ok(
@@ -434,7 +435,7 @@ test('13. Migration 6: Ambiguous column reference regression prevention in accep
   const mig6Path = path.join(process.cwd(), 'supabase', 'migrations', '20261029000002_fix_accept_invitation_ambiguity.sql');
   assert.ok(fs.existsSync(mig6Path), 'Migration 6 file must exist');
 
-  const mig6Sql = fs.readFileSync(mig6Path, 'utf-8');
+  const mig6Sql = readSql(mig6Path);
   assert.ok(mig6Sql.includes('CREATE OR REPLACE FUNCTION public.accept_invitation('), 'Must define public.accept_invitation');
   assert.ok(mig6Sql.includes('#variable_conflict use_column'), 'Must set #variable_conflict use_column directive');
   assert.ok(mig6Sql.includes('RETURNS TABLE (\n    company_id UUID,\n    store_id UUID,\n    role TEXT\n)'), 'Return table contract must match caller expectations');
@@ -443,3 +444,5 @@ test('13. Migration 6: Ambiguous column reference regression prevention in accep
   assert.ok(mig6Sql.includes('REVOKE ALL ON FUNCTION public.accept_invitation(TEXT) FROM PUBLIC;'), 'Revoke public execution');
   assert.ok(mig6Sql.includes('GRANT EXECUTE ON FUNCTION public.accept_invitation(TEXT) TO authenticated, service_role;'), 'Grant authenticated and service_role execution');
 });
+
+

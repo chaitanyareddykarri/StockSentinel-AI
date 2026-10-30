@@ -318,7 +318,9 @@ test('CSV Import Pipeline: Comprehensive Validation, UUID Integrity & Resolution
 
     try {
       const parseCsvFile = (filename: string): Record<string, unknown>[] => {
-        const filePath = path.join(process.cwd(), 'samples', filename);
+        const sampleDir = path.join(process.cwd(), 'data', 'sample', filename);
+        const legacyDir = path.join(process.cwd(), 'samples', filename);
+        const filePath = fs.existsSync(sampleDir) ? sampleDir : legacyDir;
         const content = fs.readFileSync(filePath, 'utf-8');
         const parsed = Papa.parse(content, { header: true, skipEmptyLines: true });
         return parsed.data as Record<string, unknown>[];
@@ -375,3 +377,4 @@ test('CSV Import Pipeline: Comprehensive Validation, UUID Integrity & Resolution
     }
   });
 });
+
