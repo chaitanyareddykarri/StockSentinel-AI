@@ -251,3 +251,4 @@ npm run build
 - Valid test submission file generated at `submission/R1_predictions.csv` (14,000 rows across 28 days and 25 stores).
 - Complete passing test suite (8 Python ML tests, 114 TypeScript unit tests, 0 build errors).
 - Zero look-ahead leakage and complete audit trail.
+
